@@ -4,7 +4,7 @@
 ## AnyKernel setup
 # begin properties
 properties() { '
-kernel.string=AliothX Kernel (DroidSpaces + SUSFS) by otaviomorais
+kernel.string=AliothX Kernel with DroidSpaces Support by otaviomorais
 do.devicecheck=1
 do.modules=0
 do.systemless=1

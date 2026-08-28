@@ -50,17 +50,6 @@ jobs:
           rm -f Magisk.apk
           magiskboot --help || true
 
-      - name: Apply SUSFS 4.19 Patches
-        run: |
-          echo "=== Setting up SUSFS for Linux 4.19 ==="
-          sudo apt-get install -y patch
-          curl -sSL -o 50_add_susfs_in_kernel-4.19.patch https://gitlab.com/PuceLi/susfs4ksu/-/raw/kernel-4.19/kernel_patches/50_add_susfs_in_kernel-4.19.patch
-          curl -sSL --create-dirs -o fs/susfs.c https://gitlab.com/PuceLi/susfs4ksu/-/raw/kernel-4.19/kernel_patches/fs/susfs.c
-          curl -sSL --create-dirs -o include/linux/susfs.h https://gitlab.com/PuceLi/susfs4ksu/-/raw/kernel-4.19/kernel_patches/include/linux/susfs.h
-          curl -sSL --create-dirs -o include/linux/susfs_def.h https://gitlab.com/PuceLi/susfs4ksu/-/raw/kernel-4.19/kernel_patches/include/linux/susfs_def.h
-          patch -p1 < 50_add_susfs_in_kernel-4.19.patch
-          echo "SUSFS patches applied successfully!"
-
       - name: Compile Kernel
         run: |
           mkdir -p out
