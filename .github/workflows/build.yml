@@ -78,53 +78,16 @@ jobs:
 
       - name: Package with AnyKernel3
         run: |
-          git clone https://github.com/osm0sis/AnyKernel3.git anykernel
-          cd anykernel
-
-          cat << 'EOF' > anykernel.sh
-### AnyKernel3 - Alioth
-properties() { '
-kernel.string=AliothX Kernel by otaviomorais
-do.devicecheck=1
-do.modules=0
-do.systemless=1
-do.cleanup=1
-do.cleanuponabort=0
-device.name1=alioth
-device.name2=aliothin
-device.name3=POCO F3
-device.name4=Redmi K40
-device.name5=Mi 11X
-supported.versions=
-'; }
-
-# boot shell variables
-BLOCK=boot;
-IS_SLOT_DEVICE=auto;
-RAMDISK_COMPRESSION=auto;
-PATCH_VBMETA_FLAG=auto;
-
-# import functions/variables and setup patching - see for reference (DO NOT REMOVE)
-. tools/ak3-core.sh;
-
-# boot install
-split_boot;
-
-flash_boot;
-flash_dtbo;
-## end boot install
-EOF
-
-          cp ../out/arch/arm64/boot/Image .
-          if [ -f ../out/arch/arm64/boot/dtbo.img ]; then
-            cp ../out/arch/arm64/boot/dtbo.img .
+          cp -r anykernel ak
+          cp out/arch/arm64/boot/Image ak/Image
+          if [ -f out/arch/arm64/boot/dtbo.img ]; then
+            cp out/arch/arm64/boot/dtbo.img ak/dtbo.img
           fi
-          find ../out/arch/arm64/boot/dts/vendor/qcom/ -name "*kona*.dtb" -exec cat {} + > dtb || true
+          cat out/arch/arm64/boot/dts/vendor/qcom/kona*.dtb > ak/dtb 2>/dev/null || true
 
           DATE_TAG=$(date +'%Y%m%d-%H%M')
           ZIP_NAME="AliothX-DroidSpaces-alioth-${DATE_TAG}.zip"
-          zip -r9 "../${ZIP_NAME}" * -x .git README.md *placeholder
-          cd ..
+          (cd ak && zip -r9 "../${ZIP_NAME}" . -x '*.git*')
           echo "ZIP_NAME=${ZIP_NAME}" >> $GITHUB_ENV
           echo "DATE_TAG=${DATE_TAG}" >> $GITHUB_ENV
 
