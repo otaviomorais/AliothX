@@ -725,7 +725,7 @@ TRACE_EVENT(sched_load_cfs_rq,
 		__trace_sched_path(cfs_rq, __get_dynamic_array(path),
 				   __get_dynamic_array_len(path));
 		__entry->load		= cfs_rq->avg.load_avg;
-		__entry->rbl_load 	= cfs_rq->avg.runnable_load_avg;
+		__entry->rbl_load 	= cfs_rq->avg.runnable_avg;
 		__entry->util		= cfs_rq->avg.util_avg;
 	),
 
@@ -821,7 +821,7 @@ TRACE_EVENT(sched_load_se,
 				      p ? TASK_COMM_LEN : sizeof("(null)"));
 		__entry->pid = p ? p->pid : -1;
 		__entry->load = se->avg.load_avg;
-		__entry->rbl_load = se->avg.runnable_load_avg;
+		__entry->rbl_load = se->avg.runnable_avg;
 		__entry->util = se->avg.util_avg;
 	),
 
@@ -883,8 +883,8 @@ TRACE_EVENT(sched_util_est_task,
 		__entry->pid			= tsk->pid;
 		__entry->cpu			= task_cpu(tsk);
 		__entry->util_avg		= avg->util_avg;
-		__entry->est_enqueued		= avg->util_est.enqueued;
-		__entry->est_ewma		= avg->util_est.ewma;
+		__entry->est_enqueued		= avg->util_est;
+		__entry->est_ewma		= 0;
 	),
 
 	TP_printk("comm=%s pid=%d cpu=%d util_avg=%u util_est_ewma=%u util_est_enqueued=%u",
@@ -914,7 +914,7 @@ TRACE_EVENT(sched_util_est_cpu,
 	TP_fast_assign(
 		__entry->cpu			= cpu;
 		__entry->util_avg		= cfs_rq->avg.util_avg;
-		__entry->util_est_enqueued	= cfs_rq->avg.util_est.enqueued;
+		__entry->util_est_enqueued	= cfs_rq->avg.util_est;
 	),
 
 	TP_printk("cpu=%d util_avg=%u util_est_enqueued=%u",
