@@ -95,7 +95,7 @@ device.name2=aliothin
 device.name3=POCO F3
 device.name4=Redmi K40
 device.name5=Mi 11X
-supported.versions=11-16
+supported.versions=
 '; }
 
 # boot shell variables
