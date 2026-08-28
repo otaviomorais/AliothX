@@ -7,7 +7,7 @@
  Kernel: AliothX (Linux 4.19.325 LTS)
  Platform: Xiaomi SM8250 (Snapdragon 865)
  Target: POCO F3 / Redmi K40 / Mi 11X
- Features: DroidSpaces & LXC Support
+ Features: DroidSpaces + ZSTD 1.5.7 (BMI2)
  Build: Android 16 (AOSP 16)
  Author: otaviomorais
 =========================================
