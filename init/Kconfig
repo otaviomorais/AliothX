@@ -30,7 +30,7 @@ config CC_IS_GCC
 
 config GCC_VERSION
 	int
-	default $(shell,$(srctree)/scripts/gcc-version.sh -p $(CC) | sed 's/^0*//') if CC_IS_GCC
+	default $(shell,$(srctree)/scripts/gcc-version.sh $(CC)) if CC_IS_GCC
 	default 0
 
 config CC_IS_CLANG
@@ -43,12 +43,37 @@ config CLANG_VERSION
 	int
 	default $(shell,$(srctree)/scripts/clang-version.sh $(CC))
 
+config AS_IS_GNU
+	def_bool $(success,test "$(as-name)" = GNU)
+
+config AS_IS_LLVM
+	def_bool $(success,test "$(as-name)" = LLVM)
+
+config AS_VERSION
+	int
+	# Use clang version if this is the integrated assembler
+	default CLANG_VERSION if AS_IS_LLVM
+	default $(as-version)
+
 config LLD_VERSION
 	int
 	default $(shell,$(srctree)/scripts/lld-version.sh $(LD))
 
+config CC_CAN_LINK
+	bool
+	default $(success,$(srctree)/scripts/cc-can-link.sh $(CC) $(m64-flag)) if 64BIT
+	default $(success,$(srctree)/scripts/cc-can-link.sh $(CC) $(m32-flag))
+
+config CC_CAN_LINK_STATIC
+	bool
+	default $(success,$(srctree)/scripts/cc-can-link.sh $(CC) -static $(m64-flag)) if 64BIT
+	default $(success,$(srctree)/scripts/cc-can-link.sh $(CC) -static $(m32-flag))
+
 config CC_HAS_ASM_GOTO
 	def_bool $(success,$(srctree)/scripts/gcc-goto.sh $(CC))
+
+config TOOLS_SUPPORT_RELR
+	def_bool $(success,env "CC=$(CC)" "LD=$(LD)" "NM=$(NM)" "OBJCOPY=$(OBJCOPY)" $(srctree)/scripts/tools-support-relr.sh)
 
 config CONSTRUCTORS
 	bool
@@ -69,39 +94,6 @@ config THREAD_INFO_IN_TASK
 
 	  One subtle change that will be needed is to use try_get_task_stack()
 	  and put_task_stack() in save_thread_stack_tsk() and get_wchan().
-
-menu "E404 Kernel Configuration"
-
-config E404_ATTRIBUTES
- 	tristate "Build E404 kernel attributes"
- 	default y
- 	help
- 	  Enabling this require needed files of e404_attributes.c and e404_attributes.h
-	  Allow to build kernel with E404 attributes and sysfs features.
-
-config E404_OPLUS
-	bool "Build E404 with support for Oplus Rom"
-	default n
-	select OPLUS_OPROJECT
-	select OPLUS_NANDSWAP
-	depends on E404_ATTRIBUTES
-
-config E404_MIUI
-	bool "Set DTBO for for MIUI/Hyperos rom as default"
-	default n
-	depends on E404_ATTRIBUTES
-
-config E404_EFFCPU_DEFAULT
-	bool "Set efficient cpu frequency as default"
-	depends on E404_ATTRIBUTES
-	default n
-
-config E404_ALIOTH_5K_BATT_DEFAULT
-	bool "Set 5000 mAh battery profile for alioth as default"
-	depends on E404_ATTRIBUTES
-	default n
-
-endmenu
 
 menu "General setup"
 
@@ -174,31 +166,6 @@ config BUILD_SALT
           this option will use the value in the calculation of the build id.
           This is mostly useful for distributions which want to ensure the
           build is unique between builds. It's safe to leave the default.
-
-config INLINE_OPTIMIZATION
-	bool "Optimize compiler inlining"
-	default n
-	help
-	  Inlining functions in the hot-path can help improve performance,
-	  while also increasing the final size of the kernel image. Setting
-	  this option informs the compiler to optimize inlining. Whether to
-	  inline for performance or reduced size is controlled via the
-	  optimize for size (CC_OPTIMIZE_FOR_SIZE) or optimize for
-	  performance (CC_OPTIMIZE_FOR_PERFORMANCE) configs.
-
-config POLLY_CLANG
-	bool "Use Clang Polly optimizations"
-	default y
-#	depends on CC_IS_CLANG && $(cc-option, -mllvm -polly)
-#	depends on !COMPILE_TEST
-	help
-	  This option enables Clang's polyhedral loop optimizer known as
-	  Polly. Polly is able to optimize various loops throughout the
-	  kernel for cache locality. This requires a Clang toolchain
-	  compiled with support for Polly. More information can be found
-	  from Polly's website:
-
-	  https://polly.llvm.org
 
 config HAVE_KERNEL_GZIP
 	bool
@@ -343,7 +310,7 @@ config SWAP
 
 config SYSVIPC
 	bool "System V IPC"
-	---help---
+	help
 	  Inter Process Communication is a suite of library functions and
 	  system calls which let processes (running programs) synchronize and
 	  exchange information. It is generally considered to be a good thing,
@@ -365,7 +332,7 @@ config SYSVIPC_SYSCTL
 config POSIX_MQUEUE
 	bool "POSIX Message Queues"
 	depends on NET
-	---help---
+	help
 	  POSIX variant of message queues is a part of IPC. In POSIX message
 	  queues every message has a priority which decides about succession
 	  of receiving it by a process. If you want to compile and run
@@ -504,14 +471,18 @@ config IRQ_TIME_ACCOUNTING
 
 	  If in doubt, say N here.
 
+config SCHED_WALT
+	bool "Support window based load tracking"
+	depends on SMP
+	help
+	This feature will allow the scheduler to maintain a tunable window
+	based set of metrics for tasks and runqueues. These metrics can be
+	used to guide task placement as well as task frequency requirements
+	for cpufreq governors.
+
 config HAVE_SCHED_AVG_IRQ
 	def_bool y
 	depends on IRQ_TIME_ACCOUNTING || PARAVIRT_TIME_ACCOUNTING
-	depends on SMP
-
-config SCHED_THERMAL_PRESSURE
-	default y
-	bool "Enable periodic averaging of thermal pressure"
 	depends on SMP
 
 config BSD_PROCESS_ACCT
@@ -637,7 +608,7 @@ endmenu # "CPU/Task time and stats accounting"
 
 config CPU_ISOLATION
 	bool "CPU isolation"
-	depends on SMP || COMPILE_TEST
+	depends on SMP
 	default y
 	help
 	  Make sure that CPUs running critical tasks are not disturbed by
@@ -656,7 +627,7 @@ config BUILD_BIN2C
 config IKCONFIG
 	tristate "Kernel .config support"
 	select BUILD_BIN2C
-	---help---
+	help
 	  This option enables the complete Linux kernel ".config" file
 	  contents to be saved in the kernel. It provides documentation
 	  of which kernel options are used in a running kernel or in an
@@ -669,7 +640,7 @@ config IKCONFIG
 config IKCONFIG_PROC
 	bool "Enable access to .config through /proc/config.gz"
 	depends on IKCONFIG && PROC_FS
-	---help---
+	help
 	  This option enables access to the kernel configuration file
 	  through /proc/config.gz.
 
@@ -834,49 +805,6 @@ config UCLAMP_BUCKETS_COUNT
 
 endmenu
 
-menu "FAIR Scheuler tunables"
-
-choice
-	prompt "Utilization's PELT half-Life"
-	default PELT_UTIL_HALFLIFE_32
-	help
-	  Allows choosing one of the possible values for the PELT half-life to
-	  be used for the update of the utilization of tasks and CPUs.
-	  The half-life is the amount of [ms] required by the PELT signal to
-	  build up to 50% utilization. The higher the half-life the longer it
-	  takes for a task to be represented as a big one.
-
-	  If not sure, use the default of 32 ms.
-
-config PELT_UTIL_HALFLIFE_32
-	bool "32 ms, default for server"
-
-config PELT_UTIL_HALFLIFE_16
-	bool "16 ms, suggested for interactive workloads"
-	help
-	  Use 16ms as PELT half-life value. This will increase the ramp-up and
-	  decay of utlization and load twice as fast as for the default
-	  configuration using 32ms.
-
-config PELT_UTIL_HALFLIFE_8
-	bool "8 ms, very fast"
-	help
-	  Use 8ms as PELT half-life value. This will increase the ramp-up and
-	  decay of utlization and load four time as fast as for the default
-	  configuration using 32ms.
-
-endchoice
-
-config PELT_COMPATIBILITY_LAYER
-	bool "Compatibility layer for Qualcomm performance HALs"
-	help
-	  This option enables a non-operational compatibility layer for use in
-	  lieu of Window Assisted Load Tracking on systems which expect it.
-
-	  If unsure, say N.
-
-endmenu # FAIR Scheduler tunables"
-
 #
 # For architectures that want to enable the support for NUMA-affine scheduler
 # balancing logic:
@@ -981,7 +909,7 @@ config BLK_CGROUP
 	bool "IO controller"
 	depends on BLOCK
 	default n
-	---help---
+	help
 	Generic block IO controller cgroup interface. This is the common
 	cgroup interface which should be used by various IO controlling
 	policies.
@@ -1003,7 +931,7 @@ config DEBUG_BLK_CGROUP
 	bool "IO controller debugging"
 	depends on BLK_CGROUP
 	default n
-	---help---
+	help
 	Enable some debugging help. Currently it exports additional stat
 	files in a cgroup which can be useful for debugging.
 
@@ -1071,6 +999,21 @@ config UCLAMP_TASK_GROUP
 	  be bigger than the corresponding clamping defined at task group level.
 
 	  If in doubt, say N.
+
+config SCHED_TUNE_DUMMY
+	bool "Dummy SCHEDTUNE nodes"
+	depends on SMP
+	default y
+	help
+	  Create dummy SCHEDTUNE nodes to satisfy rom compability.
+
+config UCLAMP_ASSIST
+	bool "UClamp configuration helper"
+	depends on UCLAMP_TASK && UCLAMP_TASK_GROUP
+	default y
+	help
+	  This option enables in-kernel uclamp setting overrides for
+	  Android cgroups (top-app, foreground, background, etc.).
 
 config CGROUP_PIDS
 	bool "PIDs controller"
@@ -1194,6 +1137,16 @@ config SOCK_CGROUP_DATA
 
 endif # CGROUPS
 
+config SCHED_CORE_CTL
+	bool "QTI Core Control"
+	depends on SMP && SCHED_WALT
+	help
+	  This options enables the core control functionality in
+	  the scheduler. Core control automatically offline and
+	  online cores based on cpu load and utilization.
+
+	  If unsure, say N here.
+
 menuconfig NAMESPACES
 	bool "Namespaces support" if EXPERT
 	depends on MULTIUSER
@@ -1265,31 +1218,6 @@ config CHECKPOINT_RESTORE
 
 	  If unsure, say N here.
 
-config SCHED_CASS
-	bool "Capacity Aware Superset Scheduler"
-	depends on SMP
-	help
-	  This enables the Capacity Aware Superset Scheduler (CASS), which
-	  optimizes runqueue selection of CFS tasks. By using CPU capacity as a
-	  basis for comparing the relative utilization between different CPUs,
-	  CASS fairly balances load across CPUs of varying capacities. This
-	  results in improved multi-core performance, especially when CPUs are
-	  overutilized because CASS doesn't clip a CPU's utilization when it
-	  eclipses the CPU's capacity.
-
-	  As a superset of capacity aware scheduling, CASS implements a
-	  hierarchy of criteria to determine the better CPU to wake a task upon
-	  between CPUs that have the same relative utilization. This way,
-	  single-core performance, latency, and cache affinity are all optimized
-	  where possible.
-
-	  CASS doesn't feature explicit energy awareness but its basic load
-	  balancing principle results in decreased overall energy, often better
-	  than what is possible with explicit energy awareness. By fairly
-	  balancing load based on relative utilization, all CPUs are kept at
-	  their lowest P-state necessary to satisfy the overall load at any
-	  given moment.
-
 config SCHED_AUTOGROUP
 	bool "Automatic process group scheduling"
 	select CGROUPS
@@ -1302,80 +1230,29 @@ config SCHED_AUTOGROUP
 	  desktop applications.  Task group autogeneration is currently based
 	  upon task session.
 
-config SCHED_TUNE_DUMMY
-	bool "Dummy SCHEDTUNE nodes"
+config SCHED_TUNE
+	bool "Boosting for CFS tasks (EXPERIMENTAL)"
+	depends on !UCLAMP_TASK
 	depends on SMP
-	depends on !CGROUP_SCHEDTUNE
-	default y
 	help
-	  Create dummy SCHEDTUNE nodes to satisfy rom compability.
+	  This option enables support for task classification using a new
+	  cgroup controller, schedtune. Schedtune allows tasks to be given
+	  a boost value and marked as latency-sensitive or not. This option
+	  provides the "schedtune" controller.
 
-config UCLAMP_ASSIST
-	bool "UClamp configuration helper"
-	depends on ANDROID && UCLAMP_TASK && UCLAMP_TASK_GROUP
-	help
-	  This option enabled in-kernel uclamp setting overrides
+	  This new controller:
+	  1. allows only a two layers hierarchy, where the root defines the
+	     system-wide boost value and its direct childrens define each one a
+	     different "class of tasks" to be boosted with a different value
+	  2. supports up to 16 different task classes, each one which could be
+	     configured with a different boost value
 
-config CPUSET_ASSIST
-	bool "Cpuset configuration helper"
-	depends on CPUSETS
-	depends on ANDROID
-	help
-	  This option enables in-kernel overrides for cpuset values.
+	  Latency-sensitive tasks are not subject to energy-aware wakeup
+	  task placement. The boost value assigned to tasks is used to
+	  influence task placement and CPU frequency selection (if
+	  utilization-driven frequency selection is in use).
 
 	  If unsure, say N.
-
-if CPUSET_ASSIST
-
-config CPUSET_AUDIO_APP
-	string "Value for 'audio-app' cpuset"
-	default "1-2"
-	help
-	  The CPU mask to use for the audio-app cpuset.
-
-config CPUSET_BG
-	string "Value for 'background' cpuset"
-	default "0-3"
-	help
-	  The CPU mask to use for the background cpuset.
-
-config CPUSET_CAMERA
-	string "Value for 'camera-daemon' cpuset"
-	default "0-7"
-	help
-	  The CPU mask to use for the camera-daemon cpuset.
-
-config CPUSET_DISPLAY
-	string "Value for 'display' cpuset"
-	default "4-7"
-	help
-	  The CPU mask to use for the display cpuset.
-
-config CPUSET_FG
-	string "Value for 'foreground' cpuset"
-	default "0-6"
-	help
-	  The CPU mask to use for the foreground cpuset.
-
-config CPUSET_RESTRICTED
-	string "Value for 'restricted' cpuset"
-	default "0-7"
-	help
-	  The CPU mask to use for the restricted cpuset.
-
-config CPUSET_SYSTEM_BG
-	string "Value for 'system-background' cpuset"
-	default "0-3"
-	help
-	  The CPU mask to use for the system-background cpuset.
-
-config CPUSET_TOP_APP
-	string "Value for 'top-app' cpuset"
-	default "0-7"
-	help
-	  The CPU mask to use for the top-app cpuset.
-
-endif
 
 config SYSFS_DEPRECATED
 	bool "Enable deprecated sysfs features to support old userspace tools"
@@ -1471,7 +1348,6 @@ endchoice
 
 config HAVE_LD_DEAD_CODE_DATA_ELIMINATION
 	bool
-	default y
 	help
 	  This requires that the arch annotates or otherwise protects
 	  its external entry points from being discarded. Linker scripts
@@ -1483,11 +1359,10 @@ config HAVE_LD_DEAD_CODE_DATA_ELIMINATION
 config LD_DEAD_CODE_DATA_ELIMINATION
 	bool "Dead code and data elimination (EXPERIMENTAL)"
 	depends on HAVE_LD_DEAD_CODE_DATA_ELIMINATION
-	default y
-#	depends on EXPERT
-#	depends on !(FUNCTION_TRACER && CC_IS_GCC && GCC_VERSION < 40800)
-#	depends on $(cc-option,-ffunction-sections -fdata-sections)
-#	depends on $(ld-option,--gc-sections)
+	depends on EXPERT
+	depends on !(FUNCTION_TRACER && CC_IS_GCC && GCC_VERSION < 40800)
+	depends on $(cc-option,-ffunction-sections -fdata-sections)
+	depends on $(ld-option,--gc-sections)
 	help
 	  Enable this if you want to do dead code and data elimination with
 	  the linker by compiling with -ffunction-sections -fdata-sections,
@@ -1535,6 +1410,8 @@ config BPF
 
 menuconfig EXPERT
 	bool "Configure standard kernel features (expert users)"
+	# Unhide debug options, to make the on-by-default options visible
+	select DEBUG_KERNEL
 	help
 	  This option allows certain base kernel options and settings
           to be disabled or tweaked. This is for specialized
@@ -1565,7 +1442,7 @@ config MULTIUSER
 config SGETMASK_SYSCALL
 	bool "sgetmask/ssetmask syscalls support" if EXPERT
 	def_bool PARISC || M68K || PPC || MIPS || X86 || SPARC || MICROBLAZE || SUPERH
-	---help---
+	help
 	  sys_sgetmask and sys_ssetmask are obsolete system calls
 	  no longer supported in libc but still enabled by default in some
 	  architectures.
@@ -1574,8 +1451,8 @@ config SGETMASK_SYSCALL
 
 config SYSFS_SYSCALL
 	bool "Sysfs syscall support" if EXPERT
-	default n
-	---help---
+	default y
+	help
 	  sys_sysfs is an obsolete system call no longer supported in libc.
 	  Note that disabling this option is more secure but might break
 	  compatibility with some systems.
@@ -1587,7 +1464,7 @@ config SYSCTL_SYSCALL
 	depends on PROC_SYSCTL
 	default n
 	select SYSCTL
-	---help---
+	help
 	  sys_sysctl uses binary paths that have been found challenging
 	  to properly maintain and use.  The interface in /proc/sys
 	  using paths with ascii names is now the primary path to this
@@ -1850,6 +1727,7 @@ config BPF_SYSCALL
 	select BPF
 	select IRQ_WORK
 	select TASKS_TRACE_RCU
+	select NET_SOCK_MSG if INET
 	default n
 	help
 	  Enable the bpf() system call that allows to manipulate eBPF
@@ -2300,6 +2178,7 @@ comment "Do not forget to sign required modules with scripts/sign-file"
 choice
 	prompt "Which hash algorithm should modules be signed with?"
 	depends on MODULE_SIG
+	default MODULE_SIG_SHA512
 	help
 	  This determines which sort of hashing algorithm will be used during
 	  signature generation.  This algorithm _must_ be built into the kernel
@@ -2395,7 +2274,6 @@ config TRIM_UNUSED_KSYMS
 config UNUSED_KSYMS_WHITELIST
 	string "Whitelist of symbols to keep in ksymtab"
 	depends on TRIM_UNUSED_KSYMS
-	default "scripts/lto-used-symbollist.txt" if LTO_CLANG
 	help
 	  By default, all unused exported symbols will be un-exported from the
 	  build when TRIM_UNUSED_KSYMS is selected.
