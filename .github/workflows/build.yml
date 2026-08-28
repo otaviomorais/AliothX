@@ -22,7 +22,7 @@ jobs:
       - name: Install Build Dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y             bc bison build-essential ccache curl flex g++-multilib gcc-multilib git             gnupg gperf libelf-dev libncurses5-dev libssl-dev libxml2 libxml2-utils             lzop pngcrush rsync schedtool squashfs-tools xsltproc zip zlib1g-dev             python3 python3-pip libtinfo5 libncurses5 gcc-aarch64-linux-gnu             gcc-arm-linux-gnueabi
+          sudo apt-get install -y             bc bison build-essential ccache curl flex git             gnupg gperf libelf-dev libncurses5-dev libssl-dev libxml2 libxml2-utils             lzop pngcrush rsync schedtool squashfs-tools xsltproc zip zlib1g-dev             python3 python3-pip libtinfo5 libncurses5
           # Provide python2 link if any script asks for python2
           which python2 || sudo ln -s $(which python3) /usr/bin/python2
 
@@ -36,6 +36,16 @@ jobs:
         run: |
           chmod +x scripts/ufdt/libufdt/utils/src/mkdtboimg.py
           sudo ln -sf $(pwd)/scripts/ufdt/libufdt/utils/src/mkdtboimg.py /usr/local/bin/mkdtboimg.py
+
+      - name: Setup magiskboot
+        run: |
+          echo "Downloading magiskboot..."
+          curl -sSL -o Magisk.apk https://github.com/topjohnwu/Magisk/releases/download/v30.7/Magisk-v30.7.apk
+          unzip -j Magisk.apk lib/x86_64/libmagiskboot.so -d /tmp/
+          sudo mv /tmp/libmagiskboot.so /usr/local/bin/magiskboot
+          sudo chmod +x /usr/local/bin/magiskboot
+          rm -f Magisk.apk
+          magiskboot --help || true
 
       - name: Compile Kernel
         run: |
@@ -89,11 +99,44 @@ jobs:
           echo "ZIP_NAME=${ZIP_NAME}" >> $GITHUB_ENV
           echo "DATE_TAG=${DATE_TAG}" >> $GITHUB_ENV
 
-      - name: Upload Artifact
+      - name: Generate boot.img and vendor_boot.img for APatch
+        run: |
+          echo "=== Fetching base Android 16 (LineageOS 23.2) boot & vendor_boot ==="
+          curl -sSL -o base_boot.img https://mirrorbits.lineageos.org/full/alioth/20260826/boot.img
+          curl -sSL -o base_vendor_boot.img https://mirrorbits.lineageos.org/full/alioth/20260826/vendor_boot.img
+
+          echo "=== Repacking boot.img with new AliothX kernel Image ==="
+          mkdir -p boot_repack && cd boot_repack
+          magiskboot unpack ../base_boot.img
+          cp ../out/arch/arm64/boot/Image kernel
+          magiskboot repack ../base_boot.img ../boot.img
+          cd ..
+
+          echo "=== Repacking vendor_boot.img with new DTB ==="
+          mkdir -p vendor_boot_repack && cd vendor_boot_repack
+          magiskboot unpack ../base_vendor_boot.img
+          if [ -f ../anykernel/dtb ]; then
+            cp ../anykernel/dtb dtb
+          fi
+          magiskboot repack ../base_vendor_boot.img ../vendor_boot.img || cp ../base_vendor_boot.img ../vendor_boot.img
+          cd ..
+
+          if [ -f out/arch/arm64/boot/dtbo.img ]; then
+            cp out/arch/arm64/boot/dtbo.img dtbo.img
+          fi
+
+          echo "Listing generated flashable images:"
+          ls -lh boot.img vendor_boot.img dtbo.img "${ZIP_NAME}"
+
+      - name: Upload Artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ env.ZIP_NAME }}
-          path: ${{ env.ZIP_NAME }}
+          name: AliothX-Images-${{ env.DATE_TAG }}
+          path: |
+            ${{ env.ZIP_NAME }}
+            boot.img
+            vendor_boot.img
+            dtbo.img
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
@@ -112,7 +155,16 @@ jobs:
               - OverlayFS & POSIX ACL/xattr
               - CGroup file prefix handling patch
             - **Compiler**: Clang r563880c (LLVM 21+)
-            - **Flash via**: TWRP, OrangeFox, or Kernel Flasher
-          files: ${{ env.ZIP_NAME }}
+            
+            #### Arquivos inclusos para instalação e APatch:
+            1. **`${{ env.ZIP_NAME }}`**: Arquivo zip para instalação direta via Recovery (TWRP / OrangeFox) ou Kernel Flasher.
+            2. **`boot.img`**: Imagem de boot contendo o kernel AliothX. **Pronta para aplicar patch com o aplicativo APatch Manager** e instalar via `fastboot flash boot boot.img`.
+            3. **`vendor_boot.img`**: Imagem vendor_boot com DTBs atualizados (`fastboot flash vendor_boot vendor_boot.img`).
+            4. **`dtbo.img`**: Imagem DTBO (`fastboot flash dtbo dtbo.img`).
+          files: |
+            ${{ env.ZIP_NAME }}
+            boot.img
+            vendor_boot.img
+            dtbo.img
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
