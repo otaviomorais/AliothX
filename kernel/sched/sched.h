@@ -107,6 +107,20 @@ static inline void wq_worker_running(struct task_struct *task)
 {
 }
 
+#ifndef cpumask_first_and_and
+static inline unsigned int cpumask_first_and_and(const struct cpumask *src1p,
+						 const struct cpumask *src2p,
+						 const struct cpumask *src3p)
+{
+	struct cpumask tmp;
+
+	if (cpumask_and(&tmp, src1p, src2p))
+		return cpumask_first_and(&tmp, src3p);
+
+	return nr_cpu_ids;
+}
+#endif
+
 
 struct rq;
 struct cpuidle_state;
