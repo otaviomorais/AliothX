@@ -1000,6 +1000,14 @@ config UCLAMP_TASK_GROUP
 
 	  If in doubt, say N.
 
+config UCLAMP_ASSIST
+	bool "UClamp configuration helper"
+	depends on UCLAMP_TASK && UCLAMP_TASK_GROUP
+	default y
+	help
+	  This option enables in-kernel uclamp setting overrides for
+	  Android cgroups (top-app, foreground, background, etc.).
+
 config CGROUP_PIDS
 	bool "PIDs controller"
 	help
