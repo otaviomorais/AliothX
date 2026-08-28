@@ -4,7 +4,7 @@
 ## AnyKernel setup
 # begin properties
 properties() { '
-kernel.string=AliothX 4.19.325 DroidSpaces for alioth
+kernel.string=AliothX Kernel with DroidSpaces Support by otaviomorais
 do.devicecheck=1
 do.modules=0
 do.systemless=1
@@ -12,9 +12,9 @@ do.cleanup=1
 do.cleanuponabort=0
 device.name1=alioth
 device.name2=aliothin
-device.name3=
-device.name4=
-device.name5=
+device.name3=POCO F3
+device.name4=Redmi K40
+device.name5=Mi 11X
 supported.versions=
 '; } # end properties
 
