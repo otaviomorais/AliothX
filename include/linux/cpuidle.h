@@ -220,7 +220,7 @@ static inline void cpuidle_use_deepest_state(bool enable)
 #endif
 
 /* kernel/sched/idle.c */
-extern void sched_idle_set_state(struct cpuidle_state *idle_state, int index);
+extern void sched_idle_set_state(struct cpuidle_state *idle_state);
 extern void default_idle_call(void);
 
 #ifdef CONFIG_ARCH_NEEDS_CPU_IDLE_COUPLED
@@ -269,17 +269,18 @@ static inline int cpuidle_register_governor(struct cpuidle_governor *gov)
 ({									\
 	int __ret = 0;							\
 									\
-	if (!idx) {							\
+	if (need_resched()) {						\
+		__ret = -1;						\
+	} else if (!idx) {						\
 		cpu_do_idle();						\
-		return idx;						\
-	}								\
-									\
-	if (!is_retention)						\
-		__ret =  cpu_pm_enter();				\
-	if (!__ret) {							\
-		__ret = low_level_idle_enter(idx);			\
+	} else {							\
 		if (!is_retention)					\
-			cpu_pm_exit();					\
+			__ret = cpu_pm_enter();				\
+		if (!__ret) {						\
+			__ret = low_level_idle_enter(idx);		\
+			if (!is_retention)				\
+				cpu_pm_exit();				\
+		}							\
 	}								\
 									\
 	__ret ? -1 : idx;						\
