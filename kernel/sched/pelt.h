@@ -1,3 +1,8 @@
+#ifndef LOAD_AVG_MAX
+#define LOAD_AVG_PERIOD 32
+#define LOAD_AVG_MAX 47742
+#define LOAD_AVG_MAX_N 345
+#endif
 #ifdef CONFIG_SMP
 #include "sched-pelt.h"
 
