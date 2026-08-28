@@ -1,3 +1,18 @@
+
+#ifndef cpumask_first_and_and
+static inline unsigned int cpumask_first_and_and(const struct cpumask *src1p,
+						 const struct cpumask *src2p,
+						 const struct cpumask *src3p)
+{
+	struct cpumask tmp;
+
+	if (cpumask_and(&tmp, src1p, src2p))
+		return cpumask_first_and(&tmp, src3p);
+
+	return nr_cpu_ids;
+}
+#endif
+
 // SPDX-License-Identifier: GPL-2.0
 /*
  * Completely Fair Scheduling (CFS) Class (SCHED_NORMAL/SCHED_BATCH)
@@ -12944,7 +12959,7 @@ static void task_change_group_fair(struct task_struct *p)
 	 * We couldn't detach or attach a forked task which
 	 * hasn't been woken up by wake_up_new_task().
 	 */
-	if (READ_ONCE(p->__state) == TASK_NEW)
+	if (READ_ONCE(p->state) == TASK_NEW)
 		return;
 
 	detach_task_cfs_rq(p);
