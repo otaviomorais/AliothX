@@ -1,0 +1,118 @@
+name: Build AliothX Kernel
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - aosp-16
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout Kernel Source
+        uses: actions/checkout@v4
+        with:
+          ref: aosp-16
+          fetch-depth: 1
+
+      - name: Install Build Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y             bc bison build-essential ccache curl flex g++-multilib gcc-multilib git             gnupg gperf libelf-dev libncurses5-dev libssl-dev libxml2 libxml2-utils             lzop pngcrush rsync schedtool squashfs-tools xsltproc zip zlib1g-dev             python3 python3-pip libtinfo5 libncurses5 gcc-aarch64-linux-gnu             gcc-arm-linux-gnueabi
+          # Provide python2 link if any script asks for python2
+          which python2 || sudo ln -s $(which python3) /usr/bin/python2
+
+      - name: Clone Clang Toolchain (r563880c)
+        run: |
+          echo "Cloning AOSP Clang r563880c..."
+          git clone --depth=1 https://gitlab.com/crdroidandroid/android_prebuilts_clang_host_linux-x86_clang-r563880c.git clang
+          chmod -R +x clang/bin/
+
+      - name: Setup mkdtboimg
+        run: |
+          chmod +x scripts/ufdt/libufdt/utils/src/mkdtboimg.py
+          sudo ln -sf $(pwd)/scripts/ufdt/libufdt/utils/src/mkdtboimg.py /usr/local/bin/mkdtboimg.py
+
+      - name: Compile Kernel
+        run: |
+          mkdir -p out
+          export PATH=$(pwd)/clang/bin:$PATH
+          export ARCH=arm64
+          export SUBARCH=arm64
+          export CLANG_TRIPLE=aarch64-linux-gnu-
+          export CROSS_COMPILE=aarch64-linux-gnu-
+          export CROSS_COMPILE_ARM32=arm-linux-gnueabi-
+
+          echo "=== Configuring alioth_defconfig ==="
+          make O=out ARCH=arm64 CC=clang LD=ld.lld AR=llvm-ar NM=llvm-nm OBJCOPY=llvm-objcopy OBJDUMP=llvm-objdump STRIP=llvm-strip LLVM=1 LLVM_IAS=1 alioth_defconfig
+
+          echo "=== Building Kernel Image, DTBs and DTBO ==="
+          make -j$(nproc --all) O=out ARCH=arm64 CC=clang LD=ld.lld AR=llvm-ar NM=llvm-nm OBJCOPY=llvm-objcopy OBJDUMP=llvm-objdump STRIP=llvm-strip LLVM=1 LLVM_IAS=1 Image dtbs dtbo.img
+
+      - name: Verify Build Output
+        run: |
+          if [ ! -f out/arch/arm64/boot/Image ]; then
+            echo "ERROR: Kernel Image not found!"
+            exit 1
+          fi
+          echo "Kernel compiled successfully!"
+          ls -lh out/arch/arm64/boot/Image
+          ls -lh out/arch/arm64/boot/dtbo.img || true
+
+      - name: Package with AnyKernel3
+        run: |
+          git clone https://github.com/osm0sis/AnyKernel3.git anykernel
+          cd anykernel
+          sed -i 's/do.devicecheck=1/do.devicecheck=1/g' anykernel.sh
+          sed -i 's/device.name1=.*/device.name1=alioth/g' anykernel.sh
+          sed -i 's/device.name2=.*/device.name2=aliothin/g' anykernel.sh
+          sed -i 's/device.name3=.*/device.name3=POCO F3/g' anykernel.sh
+          sed -i 's/device.name4=.*/device.name4=Redmi K40/g' anykernel.sh
+          sed -i 's/device.name5=.*/device.name5=Mi 11X/g' anykernel.sh
+          sed -i 's/block=.*/block=\/dev\/block\/bootdevice\/by-name\/boot;/g' anykernel.sh
+          sed -i 's/is_slot_device=0/is_slot_device=1/g' anykernel.sh
+
+          cp ../out/arch/arm64/boot/Image .
+          if [ -f ../out/arch/arm64/boot/dtbo.img ]; then
+            cp ../out/arch/arm64/boot/dtbo.img .
+          fi
+          find ../out/arch/arm64/boot/dts/vendor/qcom/ -name "*kona*.dtb" -exec cat {} + > dtb || true
+
+          DATE_TAG=$(date +'%Y%m%d-%H%M')
+          ZIP_NAME="AliothX-DroidSpaces-alioth-${DATE_TAG}.zip"
+          zip -r9 "../${ZIP_NAME}" * -x .git README.md *placeholder
+          cd ..
+          echo "ZIP_NAME=${ZIP_NAME}" >> $GITHUB_ENV
+          echo "DATE_TAG=${DATE_TAG}" >> $GITHUB_ENV
+
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.ZIP_NAME }}
+          path: ${{ env.ZIP_NAME }}
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        if: startsWith(github.ref, 'refs/heads/aosp-16') || github.event_name == 'workflow_dispatch'
+        with:
+          tag_name: v${{ env.DATE_TAG }}
+          name: AliothX DroidSpaces (${{ env.DATE_TAG }})
+          body: |
+            ### AliothX Kernel - POCO F3 / Redmi K40 (alioth)
+            - **Base**: Linux 4.19.325 (AOSP 16 / Android 16)
+            - **Features**: Full DroidSpaces & LXC Support
+              - POSIX message queues & System V IPC
+              - Namespaces (PID, UTS, IPC, USER, NET)
+              - CGroups v1/v2 (Memory, PIDs, Freezer, Devices, Net Prio)
+              - Bridge, VETH, NAT, Netfilter/IPTables/NFTables
+              - OverlayFS & POSIX ACL/xattr
+              - CGroup file prefix handling patch
+            - **Compiler**: Clang r563880c (LLVM 21+)
+            - **Flash via**: TWRP, OrangeFox, or Kernel Flasher
+          files: ${{ env.ZIP_NAME }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
