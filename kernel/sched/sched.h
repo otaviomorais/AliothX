@@ -1,3 +1,21 @@
+
+typedef int (*task_call_f)(struct task_struct *p, void *arg);
+
+#ifndef CSD_TYPE_TTWU
+#define CSD_TYPE_TTWU 0
+#endif
+
+#ifndef mmdrop_delayed
+static inline void mmdrop_delayed(struct mm_struct *mm)
+{
+	mmdrop(mm);
+}
+#endif
+
+static inline void wq_worker_running(struct task_struct *task)
+{
+}
+
 /* SPDX-License-Identifier: GPL-2.0 */
 /*
  * Scheduler internal types and methods:

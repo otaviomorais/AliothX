@@ -3,6 +3,23 @@
 #define TRACE_SYSTEM sched
 
 #if !defined(_TRACE_SCHED_H) || defined(TRACE_HEADER_MULTI_READ)
+
+#ifndef idle_get_state_idx
+#define idle_get_state_idx(rq) 0
+#endif
+
+#ifndef sched_irqload
+#define sched_irqload(cpu) 0
+#endif
+
+#ifndef sched_cpu_high_irqload
+#define sched_cpu_high_irqload(cpu) 0
+#endif
+
+#ifndef walt_nr_rtg_high_prio
+#define walt_nr_rtg_high_prio(cpu) 0
+#endif
+
 #define _TRACE_SCHED_H
 
 #include <linux/sched/numa_balancing.h>
