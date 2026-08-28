@@ -8,28 +8,10 @@
  */
 
 #include <linux/sched.h>
-#include <linux/uaccess.h>
 
 struct task_struct;
 struct rusage;
 union thread_union;
-
-/* All the bits taken by the old clone syscall. */
-#define CLONE_LEGACY_FLAGS 0xffffffffULL
-
-struct kernel_clone_args {
-	u64 flags;
-	int __user *pidfd;
-	int __user *child_tid;
-	int __user *parent_tid;
-	int exit_signal;
-	unsigned long stack;
-	unsigned long stack_size;
-	unsigned long tls;
-	pid_t *set_tid;
-	/* Number of elements in *set_tid */
-	size_t set_tid_size;
-};
 
 /*
  * This serializes "schedule()" and also protects
@@ -51,10 +33,11 @@ extern asmlinkage void schedule_tail(struct task_struct *prev);
 extern void init_idle(struct task_struct *idle, int cpu);
 
 extern int sched_fork(unsigned long clone_flags, struct task_struct *p);
+extern void sched_cgroup_fork(struct task_struct *p);
+extern void sched_post_fork(struct task_struct *p);
 extern void sched_dead(struct task_struct *p);
 
 void __noreturn do_task_dead(void);
-void __noreturn make_task_dead(int signr);
 
 extern void proc_caches_init(void);
 
@@ -92,8 +75,7 @@ extern void do_group_exit(int);
 extern void exit_files(struct task_struct *);
 extern void exit_itimers(struct signal_struct *);
 
-extern long _do_fork(struct kernel_clone_args *kargs);
-extern bool legacy_clone_args_valid(const struct kernel_clone_args *kargs);
+extern long _do_fork(unsigned long, unsigned long, unsigned long, int __user *, int __user *, unsigned long);
 extern long do_fork(unsigned long, unsigned long, unsigned long, int __user *, int __user *);
 struct task_struct *fork_idle(int);
 extern pid_t kernel_thread(int (*fn)(void *), void *arg, unsigned long flags);
@@ -108,22 +90,17 @@ extern void sched_exec(void);
 #define sched_exec()   {}
 #endif
 
-static inline struct task_struct *get_task_struct(struct task_struct *t)
-{
-	refcount_inc(&t->usage);
-	return t;
-}
+#define get_task_struct(tsk) do { atomic_inc(&(tsk)->usage); } while(0)
 
 extern void __put_task_struct(struct task_struct *t);
 
 static inline void put_task_struct(struct task_struct *t)
 {
-	if (refcount_dec_and_test(&t->usage))
+	if (atomic_dec_and_test(&t->usage))
 		__put_task_struct(t);
 }
 
 struct task_struct *task_rcu_dereference(struct task_struct **ptask);
-void put_task_struct_rcu_user(struct task_struct *task);
 
 #ifdef CONFIG_ARCH_WANTS_DYNAMIC_TASK_STRUCT
 extern int arch_task_struct_size __read_mostly;

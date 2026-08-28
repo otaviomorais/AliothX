@@ -306,8 +306,7 @@ struct device_link *device_link_add(struct device *consumer,
 {
 	struct device_link *link;
 
-	if (!consumer || !supplier || consumer == supplier ||
-	    flags & ~DL_ADD_VALID_FLAGS ||
+	if (!consumer || !supplier || flags & ~DL_ADD_VALID_FLAGS ||
 	    (flags & DL_FLAG_STATELESS && flags & DL_MANAGED_LINK_FLAGS) ||
 	    (flags & DL_FLAG_SYNC_STATE_ONLY &&
 	     flags != DL_FLAG_SYNC_STATE_ONLY) ||
@@ -460,7 +459,7 @@ reorder:
 	 */
 	device_reorder_to_tail(consumer, NULL);
 
-	dev_info(consumer, "Linked as a consumer to %s\n", dev_name(supplier));
+	dev_dbg(consumer, "Linked as a consumer to %s\n", dev_name(supplier));
 
 out:
 	device_pm_unlock();
@@ -561,7 +560,7 @@ static void __device_link_del(struct kref *kref)
 {
 	struct device_link *link = container_of(kref, struct device_link, kref);
 
-	dev_info(link->consumer, "Dropping the link to %s\n",
+	dev_dbg(link->consumer, "Dropping the link to %s\n",
 		 dev_name(link->supplier));
 
 	if (link->flags & DL_FLAG_PM_RUNTIME)
@@ -576,7 +575,7 @@ static void __device_link_del(struct kref *kref)
 {
 	struct device_link *link = container_of(kref, struct device_link, kref);
 
-	dev_info(link->consumer, "Dropping the link to %s\n",
+	dev_dbg(link->consumer, "Dropping the link to %s\n",
 		 dev_name(link->supplier));
 
 	if (link->flags & DL_FLAG_PM_RUNTIME)
@@ -738,8 +737,6 @@ static void __device_links_queue_sync_state(struct device *dev,
 {
 	struct device_link *link;
 
-	if (!dev_has_sync_state(dev))
-		return;
 	if (dev->state_synced)
 		return;
 
@@ -841,7 +838,7 @@ late_initcall(sync_state_resume_initcall);
 
 static void __device_links_supplier_defer_sync(struct device *sup)
 {
-	if (list_empty(&sup->links.defer_hook) && dev_has_sync_state(sup))
+	if (list_empty(&sup->links.defer_hook))
 		list_add_tail(&sup->links.defer_hook, &deferred_sync);
 }
 
@@ -1163,7 +1160,7 @@ static void device_links_purge(struct device *dev)
 	struct device_link *link, *ln;
 
 	mutex_lock(&wfs_lock);
-	list_del_init(&dev->links.needs_suppliers);
+	list_del(&dev->links.needs_suppliers);
 	mutex_unlock(&wfs_lock);
 
 	/*
@@ -1342,11 +1339,6 @@ int lock_device_hotplug_sysfs(void)
 	/* Avoid busy looping (5 ms of sleep should do). */
 	msleep(5);
 	return restart_syscall();
-}
-
-void lock_device_hotplug_assert(void)
-{
-	lockdep_assert_held(&device_hotplug_lock);
 }
 
 #ifdef CONFIG_BLOCK
@@ -1684,11 +1676,8 @@ static ssize_t uevent_show(struct device *dev, struct device_attribute *attr,
 	if (!env)
 		return -ENOMEM;
 
-	/* Synchronize with really_probe() */
-	device_lock(dev);
 	/* let the kset specific function add its keys */
 	retval = kset->uevent_ops->uevent(kset, &dev->kobj, env);
-	device_unlock(dev);
 	if (retval)
 		goto out;
 
@@ -1732,6 +1721,9 @@ static ssize_t online_store(struct device *dev, struct device_attribute *attr,
 {
 	bool val;
 	int ret;
+
+	if (from_kuid_munged(current_user_ns(), current_uid()) == 1000)
+		return -EPERM;
 
 	ret = strtobool(buf, &val);
 	if (ret < 0)
@@ -2665,7 +2657,6 @@ done:
 	device_pm_remove(dev);
 	dpm_sysfs_remove(dev);
  DPMError:
-	dev->driver = NULL;
 	bus_remove_device(dev);
  BusError:
 	device_remove_attrs(dev);
@@ -3808,50 +3799,6 @@ define_dev_printk_level(_dev_notice, KERN_NOTICE);
 define_dev_printk_level(_dev_info, KERN_INFO);
 
 #endif
-
-/**
- * dev_err_probe - probe error check and log helper
- * @dev: the pointer to the struct device
- * @err: error value to test
- * @fmt: printf-style format string
- * @...: arguments as specified in the format string
- *
- * This helper implements common pattern present in probe functions for error
- * checking: print debug or error message depending if the error value is
- * -EPROBE_DEFER and propagate error upwards.
- * It replaces code sequence::
- * 	if (err != -EPROBE_DEFER)
- * 		dev_err(dev, ...);
- * 	else
- * 		dev_dbg(dev, ...);
- * 	return err;
- *
- * with::
- *
- * 	return dev_err_probe(dev, err, ...);
- *
- * Returns @err.
- *
- */
-int dev_err_probe(const struct device *dev, int err, const char *fmt, ...)
-{
-	struct va_format vaf;
-	va_list args;
-
-	va_start(args, fmt);
-	vaf.fmt = fmt;
-	vaf.va = &args;
-
-	if (err != -EPROBE_DEFER)
-		dev_err(dev, "error %pe: %pV", ERR_PTR(err), &vaf);
-	else
-		dev_dbg(dev, "error %pe: %pV", ERR_PTR(err), &vaf);
-
-	va_end(args);
-
-	return err;
-}
-EXPORT_SYMBOL_GPL(dev_err_probe);
 
 static inline bool fwnode_is_primary(struct fwnode_handle *fwnode)
 {

@@ -2,6 +2,8 @@
 /*
  * Scheduler topology setup/handling methods
  */
+
+#include <linux/sched/clock.h>
 #include "sched.h"
 
 DEFINE_MUTEX(sched_domains_mutex);
@@ -33,14 +35,6 @@ static int sched_domain_debug_one(struct sched_domain *sd, int cpu, int level,
 	cpumask_clear(groupmask);
 
 	printk(KERN_DEBUG "%*s domain-%d: ", level, "", level);
-
-	if (!(sd->flags & SD_LOAD_BALANCE)) {
-		printk("does not load-balance\n");
-		if (sd->parent)
-			printk(KERN_ERR "ERROR: !SD_LOAD_BALANCE domain has parent");
-		return -1;
-	}
-
 	printk(KERN_CONT "span=%*pbl level=%s\n",
 	       cpumask_pr_args(sched_domain_span(sd)), sd->name);
 
@@ -151,8 +145,7 @@ static int sd_degenerate(struct sched_domain *sd)
 		return 1;
 
 	/* Following flags need at least 2 groups */
-	if (sd->flags & (SD_LOAD_BALANCE |
-			 SD_BALANCE_NEWIDLE |
+	if (sd->flags & (SD_BALANCE_NEWIDLE |
 			 SD_BALANCE_FORK |
 			 SD_BALANCE_EXEC |
 			 SD_SHARE_CPUCAPACITY |
@@ -183,15 +176,14 @@ sd_parent_degenerate(struct sched_domain *sd, struct sched_domain *parent)
 
 	/* Flags needing groups don't count if only 1 group in parent */
 	if (parent->groups == parent->groups->next) {
-		pflags &= ~(SD_LOAD_BALANCE |
-				SD_BALANCE_NEWIDLE |
-				SD_BALANCE_FORK |
-				SD_BALANCE_EXEC |
-				SD_ASYM_CPUCAPACITY |
-				SD_SHARE_CPUCAPACITY |
-				SD_SHARE_PKG_RESOURCES |
-				SD_PREFER_SIBLING |
-				SD_SHARE_POWERDOMAIN);
+		pflags &= ~(SD_BALANCE_NEWIDLE |
+			    SD_BALANCE_FORK |
+			    SD_BALANCE_EXEC |
+			    SD_ASYM_CPUCAPACITY |
+			    SD_SHARE_CPUCAPACITY |
+			    SD_SHARE_PKG_RESOURCES |
+			    SD_PREFER_SIBLING |
+			    SD_SHARE_POWERDOMAIN);
 		if (nr_node_ids == 1)
 			pflags &= ~SD_SERIALIZE;
 	}
@@ -201,8 +193,8 @@ sd_parent_degenerate(struct sched_domain *sd, struct sched_domain *parent)
 	return 1;
 }
 
-DEFINE_STATIC_KEY_FALSE(sched_energy_present);
 #ifdef CONFIG_ENERGY_MODEL
+DEFINE_STATIC_KEY_FALSE(sched_energy_present);
 unsigned int sysctl_sched_energy_aware = 1;
 DEFINE_MUTEX(sched_energy_mutex);
 bool sched_energy_update;
@@ -211,15 +203,14 @@ bool sched_energy_update;
 int sched_energy_aware_handler(struct ctl_table *table, int write,
 		void *buffer, size_t *lenp, loff_t *ppos)
 {
-	int ret, state;
+	int ret;
 
 	if (write && !capable(CAP_SYS_ADMIN))
 		return -EPERM;
 
 	ret = proc_dointvec_minmax(table, write, buffer, lenp, ppos);
 	if (!ret && write) {
-		state = static_branch_unlikely(&sched_energy_present);
-		if (state != sysctl_sched_energy_aware) {
+		if (sysctl_sched_energy_aware != sched_energy_enabled()) {
 			mutex_lock(&sched_energy_mutex);
 			sched_energy_update = 1;
 			rebuild_sched_domains();
@@ -302,11 +293,11 @@ static void destroy_perf_domain_rcu(struct rcu_head *rp)
 
 static void sched_energy_set(bool has_eas)
 {
-	if (!has_eas && static_branch_unlikely(&sched_energy_present)) {
+	if (!has_eas && sched_energy_enabled()) {
 		if (sched_debug())
 			pr_info("%s: stopping EAS\n", __func__);
 		static_branch_disable_cpuslocked(&sched_energy_present);
-	} else if (has_eas && !static_branch_unlikely(&sched_energy_present)) {
+	} else if (has_eas && !sched_energy_enabled()) {
 		if (sched_debug())
 			pr_info("%s: starting EAS\n", __func__);
 		static_branch_enable_cpuslocked(&sched_energy_present);
@@ -343,18 +334,13 @@ static bool build_perf_domains(const struct cpumask *cpu_map)
 	struct perf_domain *pd = NULL, *tmp;
 	int cpu = cpumask_first(cpu_map);
 	struct root_domain *rd = cpu_rq(cpu)->rd;
+	unsigned long min_cap = ULONG_MAX;
+	struct cpumask min_cpu_mask;
 
 	if (!sysctl_sched_energy_aware)
 		goto free;
 
-	/*
-	 * EAS gets disabled when there are no asymmetric capacity
-	 * CPUs in the system. For example, all big CPUs are
-	 * hotplugged out on a b.L system. We want EAS enabled
-	 * all the time to get both power and perf benefits. Apply
-	 * this policy when WALT is enabled.
-	 */
-#ifndef CONFIG_SCHED_WALT
+	/* EAS is enabled for asymmetric CPU capacity topologies. */
 	if (!per_cpu(sd_asym_cpucapacity, cpu)) {
 		if (sched_debug()) {
 			pr_info("rd %*pbl: CPUs do not have asymmetric capacities\n",
@@ -362,9 +348,18 @@ static bool build_perf_domains(const struct cpumask *cpu_map)
 		}
 		goto free;
 	}
-#endif
 
 	for_each_cpu(i, cpu_map) {
+		unsigned long scale_cpu = arch_scale_cpu_capacity(i);
+
+		if (scale_cpu < min_cap) {
+			cpumask_clear(&min_cpu_mask);
+			min_cap = scale_cpu;
+		}
+
+		if (scale_cpu == min_cap)
+			cpumask_set_cpu(i, &min_cpu_mask);
+
 		/* Skip already covered CPUs. */
 		if (find_pd(pd, i))
 			continue;
@@ -383,6 +378,9 @@ static bool build_perf_domains(const struct cpumask *cpu_map)
 		nr_pd++;
 		nr_cs += em_pd_nr_cap_states(pd->em_pd);
 	}
+
+	if (cpumask_weight(&min_cpu_mask))
+		cpumask_copy(&min_cap_cpu_mask, &min_cpu_mask);
 
 	/* Bail out if the Energy Model complexity is too high. */
 	if (nr_pd * (nr_cs + nr_cpus) > EM_MAX_COMPLEXITY) {
@@ -462,7 +460,7 @@ void rq_attach_root(struct rq *rq, struct root_domain *rd)
 	raw_spin_unlock_irqrestore(&rq->lock, flags);
 
 	if (old_rd)
-		call_rcu_sched(&old_rd->rcu, free_rootdomain);
+		call_rcu(&old_rd->rcu, free_rootdomain);
 }
 
 void sched_get_rd(struct root_domain *rd)
@@ -475,7 +473,7 @@ void sched_put_rd(struct root_domain *rd)
 	if (!atomic_dec_and_test(&rd->refcount))
 		return;
 
-	call_rcu_sched(&rd->rcu, free_rootdomain);
+	call_rcu(&rd->rcu, free_rootdomain);
 }
 
 static int init_rootdomain(struct root_domain *rd)
@@ -501,9 +499,6 @@ static int init_rootdomain(struct root_domain *rd)
 
 	if (cpupri_init(&rd->cpupri) != 0)
 		goto free_cpudl;
-
-	rd->max_cap_orig_cpu = rd->min_cap_orig_cpu = -1;
-	rd->mid_cap_orig_cpu = -1;
 
 	init_max_cpu_capacity(&rd->max_cpu_capacity);
 
@@ -612,13 +607,13 @@ static void destroy_sched_domains(struct sched_domain *sd)
  * the cpumask of the domain), this allows us to quickly tell if
  * two CPUs are in the same cache domain, see cpus_share_cache().
  */
-DEFINE_PER_CPU(struct sched_domain *, sd_llc);
+DEFINE_PER_CPU(struct sched_domain __rcu *, sd_llc);
 DEFINE_PER_CPU(int, sd_llc_size);
 DEFINE_PER_CPU(int, sd_llc_id);
-DEFINE_PER_CPU(struct sched_domain_shared *, sd_llc_shared);
-DEFINE_PER_CPU(struct sched_domain *, sd_numa);
-DEFINE_PER_CPU(struct sched_domain *, sd_asym_packing);
-DEFINE_PER_CPU(struct sched_domain *, sd_asym_cpucapacity);
+DEFINE_PER_CPU(struct sched_domain_shared __rcu *, sd_llc_shared);
+DEFINE_PER_CPU(struct sched_domain __rcu *, sd_numa);
+DEFINE_PER_CPU(struct sched_domain __rcu *, sd_asym_packing);
+DEFINE_PER_CPU(struct sched_domain __rcu *, sd_asym_cpucapacity);
 DEFINE_STATIC_KEY_FALSE(sched_asym_cpucapacity);
 
 static void update_top_cache_domain(int cpu)
@@ -646,7 +641,7 @@ static void update_top_cache_domain(int cpu)
 	sd = highest_flag_domain(cpu, SD_ASYM_PACKING);
 	rcu_assign_pointer(per_cpu(sd_asym_packing, cpu), sd);
 
-	sd = lowest_flag_domain(cpu, SD_ASYM_CPUCAPACITY);
+	sd = lowest_flag_domain(cpu, SD_ASYM_CPUCAPACITY_FULL);
 	rcu_assign_pointer(per_cpu(sd_asym_cpucapacity, cpu), sd);
 }
 
@@ -1056,6 +1051,7 @@ static struct sched_group *get_group(int cpu, struct sd_data *sdd)
 	struct sched_domain *sd = *per_cpu_ptr(sdd->sd, cpu);
 	struct sched_domain *child = sd->child;
 	struct sched_group *sg;
+	bool already_visited;
 
 	if (child)
 		cpu = cpumask_first(sched_domain_span(child));
@@ -1063,9 +1059,14 @@ static struct sched_group *get_group(int cpu, struct sd_data *sdd)
 	sg = *per_cpu_ptr(sdd->sg, cpu);
 	sg->sgc = *per_cpu_ptr(sdd->sgc, cpu);
 
-	/* For claim_allocations: */
-	atomic_inc(&sg->ref);
-	atomic_inc(&sg->sgc->ref);
+	/* Increase refcounts for claim_allocations: */
+	already_visited = atomic_inc_return(&sg->ref) > 1;
+	/* sgc visits should follow a similar trend as sg */
+	WARN_ON(already_visited != (atomic_inc_return(&sg->sgc->ref) > 1));
+
+	/* If we have already visited that group, it's already initialized. */
+	if (already_visited)
+		return sg;
 
 	if (child) {
 		cpumask_copy(sched_group_span(sg), sched_domain_span(child));
@@ -1138,17 +1139,12 @@ build_sched_groups(struct sched_domain *sd, int cpu)
 void init_sched_groups_capacity(int cpu, struct sched_domain *sd)
 {
 	struct sched_group *sg = sd->groups;
-	cpumask_t avail_mask;
-
 	WARN_ON(!sg);
 
 	do {
 		int cpu, max_cpu = -1;
 
-		cpumask_andnot(&avail_mask, sched_group_span(sg),
-							cpu_isolated_mask);
-		sg->group_weight = cpumask_weight(&avail_mask);
-
+		sg->group_weight = cpumask_weight(sched_group_span(sg));
 		if (!(sd->flags & SD_ASYM_PACKING))
 			goto next;
 
@@ -1168,6 +1164,123 @@ next:
 		return;
 
 	update_group_capacity(sd, cpu);
+}
+
+/*
+ * Set of available CPUs grouped by their corresponding capacities
+ * Each list entry contains a CPU mask reflecting CPUs that share the same
+ * capacity.
+ * The lifespan of data is unlimited.
+ */
+LIST_HEAD(asym_cap_list);
+
+/*
+ * Verify whether there is any CPU capacity asymmetry in a given sched domain.
+ * Provides sd_flags reflecting the asymmetry scope.
+ */
+static inline int
+asym_cpu_capacity_classify(const struct cpumask *sd_span,
+			   const struct cpumask *cpu_map)
+{
+	struct asym_cap_data *entry;
+	int count = 0, miss = 0;
+
+	/*
+	 * Count how many unique CPU capacities this domain spans across
+	 * (compare sched_domain CPUs mask with ones representing  available
+	 * CPUs capacities). Take into account CPUs that might be offline:
+	 * skip those.
+	 */
+	list_for_each_entry(entry, &asym_cap_list, link) {
+		if (cpumask_intersects(sd_span, cpu_capacity_span(entry)))
+			++count;
+		else if (cpumask_intersects(cpu_map, cpu_capacity_span(entry)))
+			++miss;
+	}
+
+	WARN_ON_ONCE(!count && !list_empty(&asym_cap_list));
+
+	/* No asymmetry detected */
+	if (count < 2)
+		return 0;
+	/* Some of the available CPU capacity values have not been detected */
+	if (miss)
+		return SD_ASYM_CPUCAPACITY;
+
+	/* Full asymmetry */
+	return SD_ASYM_CPUCAPACITY | SD_ASYM_CPUCAPACITY_FULL;
+
+}
+
+static void free_asym_cap_entry(struct rcu_head *head)
+{
+	struct asym_cap_data *entry = container_of(head, struct asym_cap_data, rcu);
+	kfree(entry);
+}
+
+static inline void asym_cpu_capacity_update_data(int cpu)
+{
+	unsigned long capacity = arch_scale_cpu_capacity(cpu);
+	struct asym_cap_data *insert_entry = NULL;
+	struct asym_cap_data *entry;
+
+	/*
+	 * Search if capacity already exits. If not, track which the entry
+	 * where we should insert to keep the list ordered descendingly.
+	 */
+	list_for_each_entry(entry, &asym_cap_list, link) {
+		if (capacity == entry->capacity)
+			goto done;
+		else if (!insert_entry && capacity > entry->capacity)
+			insert_entry = list_prev_entry(entry, link);
+	}
+
+	entry = kzalloc(sizeof(*entry) + cpumask_size(), GFP_KERNEL);
+	if (WARN_ONCE(!entry, "Failed to allocate memory for asymmetry data\n"))
+		return;
+	entry->capacity = capacity;
+
+	/* If NULL then the new capacity is the smallest, add last. */
+	if (!insert_entry)
+		list_add_tail_rcu(&entry->link, &asym_cap_list);
+	else
+		list_add_rcu(&entry->link, &insert_entry->link);
+done:
+	__cpumask_set_cpu(cpu, cpu_capacity_span(entry));
+}
+
+/*
+ * Build-up/update list of CPUs grouped by their capacities
+ * An update requires explicit request to rebuild sched domains
+ * with state indicating CPU topology changes.
+ */
+static void asym_cpu_capacity_scan(void)
+{
+	struct asym_cap_data *entry, *next;
+	int cpu;
+
+	list_for_each_entry(entry, &asym_cap_list, link)
+		cpumask_clear(cpu_capacity_span(entry));
+
+	for_each_cpu_and(cpu, cpu_possible_mask, housekeeping_cpumask(HK_FLAG_DOMAIN))
+		asym_cpu_capacity_update_data(cpu);
+
+	list_for_each_entry_safe(entry, next, &asym_cap_list, link) {
+		if (cpumask_empty(cpu_capacity_span(entry))) {
+			list_del_rcu(&entry->link);
+			call_rcu(&entry->rcu, free_asym_cap_entry);
+		}
+	}
+
+	/*
+	 * Only one capacity value has been detected i.e. this system is symmetric.
+	 * No need to keep this data around.
+	 */
+	if (list_is_singular(&asym_cap_list)) {
+		entry = list_first_entry(&asym_cap_list, typeof(*entry), link);
+		list_del_rcu(&entry->link);
+		call_rcu(&entry->rcu, free_asym_cap_entry);
+	}
 }
 
 /*
@@ -1195,13 +1308,16 @@ static void set_domain_attribute(struct sched_domain *sd,
 	if (!attr || attr->relax_domain_level < 0) {
 		if (default_relax_domain_level < 0)
 			return;
-		request = default_relax_domain_level;
+		else
+			request = default_relax_domain_level;
 	} else
 		request = attr->relax_domain_level;
-
-	if (sd->level >= request) {
+	if (request < sd->level) {
 		/* Turn off idle balance on this domain: */
 		sd->flags &= ~(SD_BALANCE_WAKE|SD_BALANCE_NEWIDLE);
+	} else {
+		/* Turn on idle balance on this domain: */
+		sd->flags |= (SD_BALANCE_WAKE|SD_BALANCE_NEWIDLE);
 	}
 }
 
@@ -1304,11 +1420,13 @@ static struct cpumask		***sched_domains_numa_masks;
 static struct sched_domain *
 sd_init(struct sched_domain_topology_level *tl,
 	const struct cpumask *cpu_map,
-	struct sched_domain *child, int dflags, int cpu)
+	struct sched_domain *child, int cpu)
 {
 	struct sd_data *sdd = &tl->data;
 	struct sched_domain *sd = *per_cpu_ptr(sdd->sd, cpu);
 	int sd_id, sd_weight, sd_flags = 0;
+	struct cpumask *sd_span;
+	u64 now = sched_clock();
 
 #ifdef CONFIG_NUMA
 	/*
@@ -1325,24 +1443,15 @@ sd_init(struct sched_domain_topology_level *tl,
 			"wrong sd_flags in topology description\n"))
 		sd_flags &= TOPOLOGY_SD_FLAGS;
 
-	/* Apply detected topology flags */
-	sd_flags |= dflags;
-
 	*sd = (struct sched_domain){
 		.min_interval		= sd_weight,
 		.max_interval		= 2*sd_weight,
-		.busy_factor		= 32,
-		.imbalance_pct		= 125,
+		.busy_factor		= 16,
+		.imbalance_pct		= 117,
 
 		.cache_nice_tries	= 0,
-		.busy_idx		= 0,
-		.idle_idx		= 0,
-		.newidle_idx		= 0,
-		.wake_idx		= 0,
-		.forkexec_idx		= 0,
 
-		.flags			= 1*SD_LOAD_BALANCE
-					| 1*SD_BALANCE_NEWIDLE
+		.flags			= 1*SD_BALANCE_NEWIDLE
 					| 1*SD_BALANCE_EXEC
 					| 1*SD_BALANCE_FORK
 					| 0*SD_BALANCE_WAKE
@@ -1358,33 +1467,37 @@ sd_init(struct sched_domain_topology_level *tl,
 		.last_balance		= jiffies,
 		.balance_interval	= sd_weight,
 		.smt_gain		= 0,
+
+		/* 50% success rate */
+		.newidle_call		= 512,
+		.newidle_success	= 256,
+		.newidle_ratio		= 512,
+		.newidle_stamp		= now,
+
 		.max_newidle_lb_cost	= 0,
-		.next_decay_max_lb_cost	= jiffies,
+		.last_decay_max_lb_cost	= jiffies,
 		.child			= child,
 #ifdef CONFIG_SCHED_DEBUG
 		.name			= tl->name,
 #endif
 	};
 
-	cpumask_and(sched_domain_span(sd), cpu_map, tl->mask(cpu));
-	sd_id = cpumask_first(sched_domain_span(sd));
+	sd_span = sched_domain_span(sd);
+	cpumask_and(sd_span, cpu_map, tl->mask(cpu));
+	sd_id = cpumask_first(sd_span);
+
+	sd->flags |= asym_cpu_capacity_classify(sd_span, cpu_map);
+
+	WARN_ONCE((sd->flags & (SD_SHARE_CPUCAPACITY | SD_ASYM_CPUCAPACITY)) ==
+		  (SD_SHARE_CPUCAPACITY | SD_ASYM_CPUCAPACITY),
+		  "CPU capacity asymmetry not supported on SMT\n");
 
 	/*
 	 * Convert topological properties into behaviour.
 	 */
-
-	if (sd->flags & SD_ASYM_CPUCAPACITY) {
-		struct sched_domain *t = sd;
-
-		/*
-		 * Don't attempt to spread across CPUs of different capacities.
-		 */
-		if (sd->child)
-			sd->child->flags &= ~SD_PREFER_SIBLING;
-
-		for_each_lower_domain(t)
-			t->flags |= SD_BALANCE_WAKE;
-	}
+	/* Don't attempt to spread across CPUs of different capacities. */
+	if ((sd->flags & SD_ASYM_CPUCAPACITY) && sd->child)
+		sd->child->flags &= ~SD_PREFER_SIBLING;
 
 	if (sd->flags & SD_SHARE_CPUCAPACITY) {
 		sd->imbalance_pct = 110;
@@ -1393,13 +1506,10 @@ sd_init(struct sched_domain_topology_level *tl,
 	} else if (sd->flags & SD_SHARE_PKG_RESOURCES) {
 		sd->imbalance_pct = 117;
 		sd->cache_nice_tries = 1;
-		sd->busy_idx = 2;
 
 #ifdef CONFIG_NUMA
 	} else if (sd->flags & SD_NUMA) {
 		sd->cache_nice_tries = 2;
-		sd->busy_idx = 3;
-		sd->idle_idx = 2;
 
 		sd->flags &= ~SD_PREFER_SIBLING;
 		sd->flags |= SD_SERIALIZE;
@@ -1412,15 +1522,17 @@ sd_init(struct sched_domain_topology_level *tl,
 #endif
 	} else {
 		sd->cache_nice_tries = 1;
-		sd->busy_idx = 2;
-		sd->idle_idx = 1;
 	}
 
-	sd->shared = *per_cpu_ptr(sdd->sds, sd_id);
-	atomic_inc(&sd->shared->ref);
-
-	if (sd->flags & SD_SHARE_PKG_RESOURCES)
+	/*
+	 * For all levels sharing cache; connect a sched_domain_shared
+	 * instance.
+	 */
+	if (sd->flags & SD_SHARE_PKG_RESOURCES) {
+		sd->shared = *per_cpu_ptr(sdd->sds, sd_id);
+		atomic_inc(&sd->shared->ref);
 		atomic_set(&sd->shared->nr_busy_cpus, sd_weight);
+	}
 
 	sd->private = sdd;
 
@@ -1829,9 +1941,9 @@ static void __sdt_free(const struct cpumask *cpu_map)
 
 static struct sched_domain *build_sched_domain(struct sched_domain_topology_level *tl,
 		const struct cpumask *cpu_map, struct sched_domain_attr *attr,
-		struct sched_domain *child, int dflags, int cpu)
+		struct sched_domain *child, int cpu)
 {
-	struct sched_domain *sd = sd_init(tl, cpu_map, child, dflags, cpu);
+	struct sched_domain *sd = sd_init(tl, cpu_map, child, cpu);
 
 	if (child) {
 		sd->level = child->level + 1;
@@ -1858,63 +1970,57 @@ static struct sched_domain *build_sched_domain(struct sched_domain_topology_leve
 }
 
 /*
- * Find the sched_domain_topology_level where all CPU capacities are visible
- * for all CPUs.
+ * Ensure topology masks are sane, i.e. there are no conflicts (overlaps) for
+ * any two given CPUs on non-NUMA topology levels.
  */
-static struct sched_domain_topology_level
-*asym_cpu_capacity_level(const struct cpumask *cpu_map)
+static bool topology_span_sane(const struct cpumask *cpu_map)
 {
-	int i, j, asym_level = 0;
-	bool asym = false;
-	struct sched_domain_topology_level *tl, *asym_tl = NULL;
-	unsigned long cap;
+	struct sched_domain_topology_level *tl;
+	struct cpumask *covered, *id_seen;
+	int cpu;
 
-	/* Is there any asymmetry? */
-	cap = arch_scale_cpu_capacity(NULL, cpumask_first(cpu_map));
+	lockdep_assert_held(&sched_domains_mutex);
+	covered = sched_domains_tmpmask;
+	id_seen = sched_domains_tmpmask2;
 
-	for_each_cpu(i, cpu_map) {
-		if (arch_scale_cpu_capacity(NULL, i) != cap) {
-			asym = true;
-			break;
-		}
-	}
+	for_each_sd_topology(tl) {
 
-	if (!asym)
-		return NULL;
+		/* NUMA levels are allowed to overlap */
+		if (tl->flags & SDTL_OVERLAP)
+			continue;
 
-	/*
-	 * Examine topology from all CPU's point of views to detect the lowest
-	 * sched_domain_topology_level where a highest capacity CPU is visible
-	 * to everyone.
-	 */
-	for_each_cpu(i, cpu_map) {
-		unsigned long max_capacity = arch_scale_cpu_capacity(NULL, i);
-		int tl_id = 0;
+		cpumask_clear(covered);
+		cpumask_clear(id_seen);
 
-		for_each_sd_topology(tl) {
-			if (tl_id < asym_level)
-				goto next_level;
+		/*
+		 * Non-NUMA levels cannot partially overlap - they must be either
+		 * completely equal or completely disjoint. Otherwise we can end up
+		 * breaking the sched_group lists - i.e. a later get_group() pass
+		 * breaks the linking done for an earlier span.
+		 */
+		for_each_cpu(cpu, cpu_map) {
+			const struct cpumask *tl_cpu_mask = tl->mask(cpu);
+			int id;
 
-			for_each_cpu_and(j, tl->mask(i), cpu_map) {
-				unsigned long capacity;
+			/* lowest bit set in this mask is used as a unique id */
+			id = cpumask_first(tl_cpu_mask);
 
-				capacity = arch_scale_cpu_capacity(NULL, j);
+			if (cpumask_test_cpu(id, id_seen)) {
+				/* First CPU has already been seen, ensure identical spans */
+				if (!cpumask_equal(tl->mask(id), tl_cpu_mask))
+					return false;
+			} else {
+				/* First CPU hasn't been seen before, ensure it's a completely new span */
+				if (cpumask_intersects(tl_cpu_mask, covered))
+					return false;
 
-				if (capacity <= max_capacity)
-					continue;
-
-				max_capacity = capacity;
-				asym_level = tl_id;
-				asym_tl = tl;
+				cpumask_or(covered, covered, tl_cpu_mask);
+				cpumask_set_cpu(id, id_seen);
 			}
-next_level:
-			tl_id++;
 		}
 	}
-
-	return asym_tl;
+	return true;
 }
-
 
 /*
  * Build sched domains for a given set of CPUs and attach the sched domains
@@ -1927,7 +2033,6 @@ build_sched_domains(const struct cpumask *cpu_map, struct sched_domain_attr *att
 	struct sched_domain *sd;
 	struct s_data d;
 	int i, ret = -ENOMEM;
-	struct sched_domain_topology_level *tl_asym;
 	bool has_asym = false;
 
 	if (WARN_ON(cpumask_empty(cpu_map)))
@@ -1937,22 +2042,15 @@ build_sched_domains(const struct cpumask *cpu_map, struct sched_domain_attr *att
 	if (alloc_state != sa_rootdomain)
 		goto error;
 
-	tl_asym = asym_cpu_capacity_level(cpu_map);
-
 	/* Set up domains for CPUs specified by the cpu_map: */
 	for_each_cpu(i, cpu_map) {
 		struct sched_domain_topology_level *tl;
 
 		sd = NULL;
 		for_each_sd_topology(tl) {
-			int dflags = 0;
+			sd = build_sched_domain(tl, cpu_map, attr, sd, i);
 
-			if (tl == tl_asym) {
-				dflags |= SD_ASYM_CPUCAPACITY;
-				has_asym = true;
-			}
-
-			sd = build_sched_domain(tl, cpu_map, attr, sd, dflags, i);
+			has_asym |= sd->flags & SD_ASYM_CPUCAPACITY;
 
 			if (tl == sched_domain_topology)
 				*per_cpu_ptr(d.sd, i) = sd;
@@ -1962,6 +2060,9 @@ build_sched_domains(const struct cpumask *cpu_map, struct sched_domain_attr *att
 				break;
 		}
 	}
+
+	if (WARN_ON(!topology_span_sane(cpu_map)))
+		goto error;
 
 	/* Build the groups for the domains */
 	for_each_cpu(i, cpu_map) {
@@ -1991,45 +2092,8 @@ build_sched_domains(const struct cpumask *cpu_map, struct sched_domain_attr *att
 	/* Attach the domains */
 	rcu_read_lock();
 	for_each_cpu(i, cpu_map) {
-		int max_cpu = READ_ONCE(d.rd->max_cap_orig_cpu);
-		int min_cpu = READ_ONCE(d.rd->min_cap_orig_cpu);
-
 		sd = *per_cpu_ptr(d.sd, i);
-
-		if ((max_cpu < 0) || (arch_scale_cpu_capacity(NULL, i) >
-				arch_scale_cpu_capacity(NULL, max_cpu)))
-			WRITE_ONCE(d.rd->max_cap_orig_cpu, i);
-
-		if ((min_cpu < 0) || (arch_scale_cpu_capacity(NULL, i) <
-				arch_scale_cpu_capacity(NULL, min_cpu)))
-			WRITE_ONCE(d.rd->min_cap_orig_cpu, i);
-
 		cpu_attach_domain(sd, d.rd, i);
-	}
-
-	/* set the mid capacity cpu (assumes only 3 capacities) */
-	for_each_cpu(i, cpu_map) {
-		int max_cpu = READ_ONCE(d.rd->max_cap_orig_cpu);
-		int min_cpu = READ_ONCE(d.rd->min_cap_orig_cpu);
-
-		if ((arch_scale_cpu_capacity(NULL, i)
-				!=  arch_scale_cpu_capacity(NULL, min_cpu)) &&
-				(arch_scale_cpu_capacity(NULL, i)
-				!=  arch_scale_cpu_capacity(NULL, max_cpu))) {
-			WRITE_ONCE(d.rd->mid_cap_orig_cpu, i);
-			break;
-		}
-	}
-
-	/*
-	 * The max_cpu_capacity reflect the original capacity which does not
-	 * change dynamically. So update the max cap CPU and its capacity
-	 * here.
-	 */
-	if (d.rd->max_cap_orig_cpu != -1) {
-		d.rd->max_cpu_capacity.cpu = d.rd->max_cap_orig_cpu;
-		d.rd->max_cpu_capacity.val = arch_scale_cpu_capacity(NULL,
-						d.rd->max_cap_orig_cpu);
 	}
 
 	rcu_read_unlock();
@@ -2109,6 +2173,7 @@ int sched_init_domains(const struct cpumask *cpu_map)
 	zalloc_cpumask_var(&fallback_doms, GFP_KERNEL);
 
 	arch_update_cpu_topology();
+	asym_cpu_capacity_scan();
 	ndoms_cur = 1;
 	doms_cur = alloc_sched_domains(ndoms_cur);
 	if (!doms_cur)
@@ -2195,6 +2260,9 @@ void partition_sched_domains(int ndoms_new, cpumask_var_t doms_new[],
 
 	/* Let the architecture update CPU core mappings: */
 	new_topology = arch_update_cpu_topology();
+	/* Trigger rebuilding CPU capacity asymmetry data */
+	if (new_topology)
+		asym_cpu_capacity_scan();
 
 	if (!doms_new) {
 		WARN_ON_ONCE(dattr_new);
