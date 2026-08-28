@@ -4,7 +4,7 @@
 ## AnyKernel setup
 # begin properties
 properties() { '
-kernel.string=AliothX Kernel (DroidSpaces + ZSTD 1.5.7) by otaviomorais
+kernel.string=AliothX Kernel (DroidSpaces + ZSTD 1.5.7 + InputBoost) by otaviomorais
 do.devicecheck=1
 do.modules=0
 do.systemless=1

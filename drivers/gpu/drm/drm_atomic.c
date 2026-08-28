@@ -32,6 +32,7 @@
 #include <drm/drm_print.h>
 #include <drm/drm_writeback.h>
 #include <linux/sync_file.h>
+#include <linux/cpu_input_boost.h>
 
 #include "drm_crtc_internal.h"
 #include "drm_internal.h"
@@ -2806,6 +2807,10 @@ retry:
 				&num_fences);
 	if (ret)
 		goto out;
+
+	/* Boost CPU when committing a new frame */
+	if (!(arg->flags & DRM_MODE_ATOMIC_TEST_ONLY))
+		cpu_input_boost_kick();
 
 	if (arg->flags & DRM_MODE_ATOMIC_TEST_ONLY) {
 		ret = drm_atomic_check_only(state);
