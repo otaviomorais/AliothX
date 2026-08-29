@@ -45,7 +45,7 @@
 #define REG_OFFSET		0x0
 
 /* Timeout Delay */
-#define TIMEOUT_US		100
+#define TIMEOUT_US		500
 
 struct gdsc {
 	struct regulator_dev	*rdev;
