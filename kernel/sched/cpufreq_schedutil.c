@@ -12,6 +12,16 @@
 
 #include "sched.h"
 
+#ifndef CPUFREQ_NEED_UPDATE_LIMITS
+#define CPUFREQ_NEED_UPDATE_LIMITS (1 << 0)
+static inline bool cpufreq_driver_test_flags(u16 flags) { return false; }
+static inline bool cpufreq_driver_has_adjust_perf(void) { return false; }
+static inline void cpufreq_driver_adjust_perf(unsigned int cpu,
+					      unsigned long min_perf,
+					      unsigned long target_perf,
+					      unsigned long capacity) { }
+#endif
+
 #define IOWAIT_BOOST_MIN	(SCHED_CAPACITY_SCALE / 8)
 
 struct sugov_tunables {
