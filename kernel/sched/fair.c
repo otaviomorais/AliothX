@@ -819,14 +819,11 @@ static u64 ineligible_vruntime(struct cfs_rq *cfs_rq)
 	long weight = cfs_rq->sum_weight;
 	s64 delta = 0;
 
+	if (!curr)
+		return cfs_rq->zero_vruntime;
+
 	if (curr && !curr->on_rq)
 		curr = NULL;
-
-	/*
-	 * This is called from set_next_task_fair(.first=true) /
-	 * set_protect_slice() so curr had better be set and on_rq.
-	 */
-	WARN_ON_ONCE(!curr);
 
 	if (weight) {
 		s64 runtime = cfs_rq->sum_w_vruntime;
@@ -5349,14 +5346,14 @@ set_next_entity(struct cfs_rq *cfs_rq, struct sched_entity *se, bool first)
 		update_stats_wait_end(cfs_rq, se);
 		__dequeue_entity(cfs_rq, se);
 		update_load_avg(cfs_rq, se, UPDATE_TG);
-
-		if (first)
-			set_protect_slice(cfs_rq, se);
 	}
 
 	update_stats_curr_start(cfs_rq, se);
 	SCHED_WARN_ON(cfs_rq->curr);
 	cfs_rq->curr = se;
+
+	if (first)
+		set_protect_slice(cfs_rq, se);
 
 	/*
 	 * Track our maximum slice length, if the CPU's load is at
