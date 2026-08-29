@@ -241,6 +241,10 @@ enum migrate_types {
 	RQ_TO_GROUP,
 };
 
+static inline int sched_isolate_cpu(int cpu) { return 0; }
+static inline int sched_unisolate_cpu(int cpu) { return 0; }
+static inline int sched_unisolate_cpu_unlocked(int cpu) { return 0; }
+
 extern void scheduler_tick(void);
 
 #define	MAX_SCHEDULE_TIMEOUT		LONG_MAX

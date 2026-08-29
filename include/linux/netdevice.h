@@ -496,6 +496,11 @@ static inline bool napi_complete(struct napi_struct *n)
 	return napi_complete_done(n, 0);
 }
 
+static inline int dev_set_threaded(struct net_device *dev, bool threaded)
+{
+	return 0;
+}
+
 /**
  *	napi_hash_del - remove a NAPI from global table
  *	@napi: NAPI context
