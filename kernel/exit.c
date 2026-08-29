@@ -1127,17 +1127,17 @@ eligible_child(struct wait_opts *wo, bool ptrace, struct task_struct *p)
  */
 static int wait_task_zombie(struct wait_opts *wo, struct task_struct *p)
 {
+	struct waitid_info *infop;
+	const struct cred *cred;
 	int state, status;
 	pid_t pid = task_pid_vnr(p);
 	uid_t uid = 0;
-	const struct cred *cred;
 
 	rcu_read_lock();
 	cred = __task_cred(p);
 	if (cred)
 		uid = from_kuid_munged(current_user_ns(), cred->uid);
 	rcu_read_unlock();
-	struct waitid_info *infop;
 
 	if (!likely(wo->wo_flags & WEXITED))
 		return 0;
@@ -1294,6 +1294,7 @@ static int *task_stopped_code(struct task_struct *p, bool ptrace)
 static int wait_task_stopped(struct wait_opts *wo,
 				int ptrace, struct task_struct *p)
 {
+	const struct cred *cred;
 	struct waitid_info *infop;
 	int exit_code, *p_code, why;
 	uid_t uid = 0; /* unneeded, required by compiler */
@@ -1323,11 +1324,9 @@ static int wait_task_stopped(struct wait_opts *wo,
 		*p_code = 0;
 
 	rcu_read_lock();
-	{
-		const struct cred *cred = __task_cred(p);
-		if (cred)
-			uid = from_kuid_munged(current_user_ns(), cred->uid);
-	}
+	cred = __task_cred(p);
+	if (cred)
+		uid = from_kuid_munged(current_user_ns(), cred->uid);
 	rcu_read_unlock();
 unlock_sig:
 	spin_unlock_irq(&p->sighand->siglock);
@@ -1371,6 +1370,7 @@ unlock_sig:
  */
 static int wait_task_continued(struct wait_opts *wo, struct task_struct *p)
 {
+	const struct cred *cred;
 	struct waitid_info *infop;
 	pid_t pid;
 	uid_t uid;
@@ -1390,13 +1390,11 @@ static int wait_task_continued(struct wait_opts *wo, struct task_struct *p)
 	if (!unlikely(wo->wo_flags & WNOWAIT))
 		p->signal->flags &= ~SIGNAL_STOP_CONTINUED;
 	rcu_read_lock();
-	{
-		const struct cred *cred = __task_cred(p);
-		if (cred)
-			uid = from_kuid_munged(current_user_ns(), cred->uid);
-		else
-			uid = 0;
-	}
+	cred = __task_cred(p);
+	if (cred)
+		uid = from_kuid_munged(current_user_ns(), cred->uid);
+	else
+		uid = 0;
 	rcu_read_unlock();
 	spin_unlock_irq(&p->sighand->siglock);
 
