@@ -335,3 +335,9 @@ static void parsing_done_workfn(struct work_struct *work)
 #else
 core_initcall(free_raw_capacity);
 #endif
+
+bool topology_scale_freq_invariant(void)
+{
+	return false;
+}
+EXPORT_SYMBOL_GPL(topology_scale_freq_invariant);

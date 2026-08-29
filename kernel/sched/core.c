@@ -8862,3 +8862,12 @@ int sched_set_normal(struct task_struct *p, int nice)
 	return sched_setattr_nocheck(p, &attr);
 }
 EXPORT_SYMBOL_GPL(sched_set_normal);
+
+void cpu_load_update_nohz_start(void) { }
+void cpu_load_update_nohz_stop(void) { }
+
+int set_task_boost(int boost, u64 period)
+{
+	return 0;
+}
+EXPORT_SYMBOL_GPL(set_task_boost);

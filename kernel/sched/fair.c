@@ -6423,6 +6423,11 @@ bool cpu_overutilized(int cpu)
 	return !util_fits_cpu(cpu_util(cpu), 0, rq_util_max, cpu);
 }
 
+bool __cpu_overutilized(int cpu, int delta)
+{
+	return cpu_overutilized(cpu);
+}
+
 static inline void update_overutilized_status(struct rq *rq)
 {
 	if (!READ_ONCE(rq->rd->overutilized) && cpu_overutilized(rq->cpu)) {
