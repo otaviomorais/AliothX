@@ -54,7 +54,13 @@ Substituição da lógica legada de concorrência do Workqueue pelas rotinas mod
 
 ---
 
-### 📦 5. Compressão e Otimizações de Sistema
+### 🎮 5. Estabilidade de GPU Adreno & Reguladores de Clock
+- **Recuperação Graciosa da GPU Adreno:** Em `drivers/gpu/msm/adreno_dispatch.c`, eliminamos o `BUG_ON(ret)` original da Qualcomm. Se a GPU Adreno 650 sofrer um travamento ou *timeout* em jogos pesados sob estresse térmico, o despachante adia a retentativa graciosamente em vez de reiniciar o aparelho para o modo Recovery.
+- **Tolerância a Timeout em GDSC (500 µs):** Em `drivers/clk/qcom/gdsc-regulator.c`, o tempo limite de espera de transição de estado dos reguladores de clock foi elevado de 100 µs para 500 µs, alinhando com o subsistema principal e prevenindo congelamentos de tela e câmera.
+
+---
+
+### 📦 6. Compressão e Otimizações de Sistema
 - **ZSTD 1.5.7:** Mecanismo de compressão Zstandard atualizado para zRAM e swap, oferecendo taxas de compressão superiores e descompressão ultrarrápida.
 - **DroidSpaces:** Isolamento e particionamento de namespaces de memória para multitarefa robusta.
 - **CPU Input Boost Otimizado:** Resposta ao toque com latência ultra-baixa, elevando frequências na medida exata do toque sem desperdício de energia.
