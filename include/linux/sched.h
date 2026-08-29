@@ -2181,6 +2181,7 @@ unsigned long sched_cpu_util(int cpu);
 #endif /* CONFIG_SMP */
 
 
+int sched_set_fifo(struct task_struct *p);
 int sched_set_fifo_low(struct task_struct *p);
 int sched_set_normal(struct task_struct *p, int nice);
 
