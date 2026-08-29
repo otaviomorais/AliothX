@@ -8871,3 +8871,8 @@ int set_task_boost(int boost, u64 period)
 	return 0;
 }
 EXPORT_SYMBOL_GPL(set_task_boost);
+
+void flush_smp_call_function_from_idle(void)
+{
+}
+EXPORT_SYMBOL_GPL(flush_smp_call_function_from_idle);
