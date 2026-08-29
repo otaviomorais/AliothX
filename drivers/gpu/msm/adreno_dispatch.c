@@ -4,6 +4,7 @@
  * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
+#include <linux/delay.h>
 #include <linux/slab.h>
 
 #include "adreno.h"
@@ -2294,8 +2295,18 @@ static int dispatcher_do_fault(struct adreno_device *adreno_dev)
 
 	mutex_unlock(&device->mutex);
 
-	/* If adreno_reset() fails then what hope do we have for the future? */
-	BUG_ON(ret);
+	/*
+	 * If adreno_reset() fails, avoid panicking the phone via BUG_ON(ret).
+	 * Defer retry to the next dispatcher pass to keep Android and logs alive.
+	 */
+	if (ret) {
+		dev_crit(device->dev,
+			"gpu reset failed: %d; deferring retry to next dispatcher pass\n",
+			ret);
+		msleep(100);
+		atomic_set(&dispatcher->fault, fault);
+		return 1;
+	}
 
 	/* if any other fault got in until reset then ignore */
 	atomic_set(&dispatcher->fault, 0);
