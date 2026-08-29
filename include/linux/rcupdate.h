@@ -939,9 +939,6 @@ static inline notrace void rcu_read_unlock_sched_notrace(void)
 #endif /* #else #ifdef CONFIG_ARCH_WEAK_RELEASE_ACQUIRE */
 
 
-#endif /* __LINUX_RCUPDATE_H */
-
-
 #ifdef CONFIG_RCU_NOCB_CPU
 void rcu_init_nohz(void);
 static inline void rcu_nocb_flush_deferred_wakeup(void) { }
@@ -949,3 +946,5 @@ static inline void rcu_nocb_flush_deferred_wakeup(void) { }
 static inline void rcu_init_nohz(void) { }
 static inline void rcu_nocb_flush_deferred_wakeup(void) { }
 #endif /* #else #ifdef CONFIG_RCU_NOCB_CPU */
+
+#endif /* __LINUX_RCUPDATE_H */
