@@ -891,6 +891,7 @@ struct task_struct {
 #ifdef CONFIG_BLK_CGROUP
 	/* to be used once the psi infrastructure lands upstream. */
 	unsigned			use_memdelay:1;
+	unsigned			user_dumpable:1;
 #endif
 
 	unsigned long			atomic_flags; /* Flags requiring atomic access. */
