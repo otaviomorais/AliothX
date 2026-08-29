@@ -103,9 +103,8 @@ static inline void mmdrop_delayed(struct mm_struct *mm)
 }
 #endif
 
-static inline void wq_worker_running(struct task_struct *task)
-{
-}
+void wq_worker_running(struct task_struct *task);
+void wq_worker_sleeping(struct task_struct *task);
 
 #ifndef cpumask_first_and_and
 static inline unsigned int cpumask_first_and_and(const struct cpumask *src1p,
