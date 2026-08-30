@@ -1,3 +1,4 @@
+#include <linux/aliothx_root.h>
 // SPDX-License-Identifier: GPL-2.0
 /*
  *  linux/kernel/sys.c
@@ -2438,6 +2439,9 @@ SYSCALL_DEFINE5(prctl, int, option, unsigned long, arg2, unsigned long, arg3,
 
 	error = 0;
 	switch (option) {
+	case PR_ALIOTHX_ROOT:
+		error = aliothx_prctl_root(arg2, arg3);
+		break;
 	case PR_SET_PDEATHSIG:
 		if (!valid_signal(arg2)) {
 			error = -EINVAL;
