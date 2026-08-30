@@ -50,6 +50,8 @@ jobs:
           curl -sL "${BASE_URL}/drivers/dma-buf/dma-buf.c" -o drivers/dma-buf/dma-buf.c
           curl -sL "${BASE_URL}/drivers/dma-buf/dma-fence.c" -o drivers/dma-buf/dma-fence.c
           curl -sL "${BASE_URL}/drivers/dma-buf/reservation.c" -o drivers/dma-buf/reservation.c
+          curl -sL "${BASE_URL}/drivers/dma-buf/Makefile" -o drivers/dma-buf/Makefile
+          curl -sL "${BASE_URL}/drivers/dma-buf/Kconfig" -o drivers/dma-buf/Kconfig
           curl -sL "${BASE_URL}/scripts/mkcompile_h" -o scripts/mkcompile_h
           chmod +x scripts/mkcompile_h
           
