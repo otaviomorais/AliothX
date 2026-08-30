@@ -19,7 +19,11 @@ jobs:
       - name: Install Build Dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y             bc bison build-essential ccache curl flex git             gnupg gperf libelf-dev libncurses5-dev libssl-dev libxml2 libxml2-utils             lzop pngcrush rsync schedtool squashfs-tools xsltproc zip zlib1g-dev             python3 python3-pip libtinfo5 libncurses5
+          sudo apt-get install -y \
+            bc bison build-essential ccache curl flex git \
+            gnupg gperf libelf-dev libncurses5-dev libssl-dev libxml2 libxml2-utils \
+            lzop pngcrush rsync schedtool squashfs-tools xsltproc zip zlib1g-dev \
+            python3 python3-pip libtinfo5 libncurses5
           which python2 || sudo ln -s $(which python3) /usr/bin/python2
 
       - name: Clone Clang Toolchain (r563880c)
@@ -33,64 +37,27 @@ jobs:
           chmod +x scripts/ufdt/libufdt/utils/src/mkdtboimg.py
           sudo ln -sf $(pwd)/scripts/ufdt/libufdt/utils/src/mkdtboimg.py /usr/local/bin/mkdtboimg.py
 
-      - name: Patch Kernel for MIUI ABI & Module Compatibility
+      - name: Configure Kernel for MIUI Compatibility
         run: |
-          echo "Patching kernel/module.c to ignore vermagic checks & CRCs..."
+          echo "Bypassing module CRC and vermagic checks for vendor modules..."
           sed -i 's/return -ENOEXEC;/return 0;/g' kernel/module.c
           sed -i 's/if (!same_magic(modmagic, vermagic, info->index.vers))/if (0)/g' kernel/module.c
           sed -i 's/pr_warn("%s: disagrees about version of symbol/return 1; pr_warn("%s: disagrees about version of symbol/g' kernel/module.c
-          
-          echo "Restoring full dma-buf, dma-fence & reservation ABI for MIUI proprietary GPU/Display modules..."
-          BASE_URL="https://raw.githubusercontent.com/TIMISONG-dev/kernel_xiaomi_sm8250/magictime-miui"
-          
-          curl -sL "${BASE_URL}/include/linux/dma-buf.h" -o include/linux/dma-buf.h
-          curl -sL "${BASE_URL}/include/linux/dma-fence.h" -o include/linux/dma-fence.h
-          curl -sL "${BASE_URL}/include/linux/reservation.h" -o include/linux/reservation.h
-          
-          curl -sL "${BASE_URL}/drivers/dma-buf/Makefile" -o drivers/dma-buf/Makefile
-          curl -sL "${BASE_URL}/drivers/dma-buf/Kconfig" -o drivers/dma-buf/Kconfig
-          curl -sL "${BASE_URL}/drivers/dma-buf/dma-buf.c" -o drivers/dma-buf/dma-buf.c
-          curl -sL "${BASE_URL}/drivers/dma-buf/dma-fence.c" -o drivers/dma-buf/dma-fence.c
-          curl -sL "${BASE_URL}/drivers/dma-buf/dma-fence-array.c" -o drivers/dma-buf/dma-fence-array.c
-          curl -sL "${BASE_URL}/drivers/dma-buf/reservation.c" -o drivers/dma-buf/reservation.c
-          curl -sL "${BASE_URL}/drivers/dma-buf/seqno-fence.c" -o drivers/dma-buf/seqno-fence.c
-          curl -sL "${BASE_URL}/drivers/dma-buf/sw_sync.c" -o drivers/dma-buf/sw_sync.c
-          curl -sL "${BASE_URL}/drivers/dma-buf/sync_debug.c" -o drivers/dma-buf/sync_debug.c
-          curl -sL "${BASE_URL}/drivers/dma-buf/sync_file.c" -o drivers/dma-buf/sync_file.c
-          curl -sL "${BASE_URL}/drivers/dma-buf/dma-buf-ref.c" -o drivers/dma-buf/dma-buf-ref.c
-          curl -sL "${BASE_URL}/drivers/dma-buf/sync_debug.h" -o drivers/dma-buf/sync_debug.h
-          curl -sL "${BASE_URL}/drivers/dma-buf/sync_trace.h" -o drivers/dma-buf/sync_trace.h
-          curl -sL "${BASE_URL}/scripts/mkcompile_h" -o scripts/mkcompile_h
-          chmod +x scripts/mkcompile_h
-          
-          sed -i 's/vma_set_file(vma, dmabuf->file);/if (vma->vm_file) fput(vma->vm_file); get_file(dmabuf->file); vma->vm_file = dmabuf->file;/g' drivers/dma-buf/dma-buf.c
 
-          echo "Injecting dummy WALT sysctl stubs for MIUI perfservice compatibility..."
-          echo '#include <linux/init.h>' > kernel/sched/walt_stubs.c
-          echo '#include <linux/sysctl.h>' >> kernel/sched/walt_stubs.c
-          echo 'static int dummy_zero = 0;' >> kernel/sched/walt_stubs.c
-          echo 'static struct ctl_table walt_dummy_sysctls[] = {' >> kernel/sched/walt_stubs.c
-          echo '  { .procname = "sched_walt_rotate_big_tasks", .data = &dummy_zero, .maxlen = sizeof(int), .mode = 0644, .proc_handler = proc_dointvec },' >> kernel/sched/walt_stubs.c
-          echo '  { .procname = "sched_walt_cross_reason", .data = &dummy_zero, .maxlen = sizeof(int), .mode = 0644, .proc_handler = proc_dointvec },' >> kernel/sched/walt_stubs.c
-          echo '  { .procname = "sched_upmigrate", .data = &dummy_zero, .maxlen = sizeof(int), .mode = 0644, .proc_handler = proc_dointvec },' >> kernel/sched/walt_stubs.c
-          echo '  { .procname = "sched_downmigrate", .data = &dummy_zero, .maxlen = sizeof(int), .mode = 0644, .proc_handler = proc_dointvec },' >> kernel/sched/walt_stubs.c
-          echo '  { .procname = "sched_init_task_load", .data = &dummy_zero, .maxlen = sizeof(int), .mode = 0644, .proc_handler = proc_dointvec },' >> kernel/sched/walt_stubs.c
-          echo '  { }' >> kernel/sched/walt_stubs.c
-          echo '};' >> kernel/sched/walt_stubs.c
-          echo 'static struct ctl_table walt_dummy_root[] = {' >> kernel/sched/walt_stubs.c
-          echo '  { .procname = "kernel", .mode = 0555, .child = walt_dummy_sysctls },' >> kernel/sched/walt_stubs.c
-          echo '  { }' >> kernel/sched/walt_stubs.c
-          echo '};' >> kernel/sched/walt_stubs.c
-          echo 'static int __init walt_stubs_init(void) { register_sysctl_table(walt_dummy_root); return 0; }' >> kernel/sched/walt_stubs.c
-          echo 'late_initcall(walt_stubs_init);' >> kernel/sched/walt_stubs.c
-          echo "" >> kernel/sched/Makefile
-          echo "obj-y += walt_stubs.o" >> kernel/sched/Makefile
-          
-          echo "Applying MIUI defconfig flags..."
+          echo "Applying MIUI defconfig configuration..."
+          # Required for MIUI Android 13/14 cgroup task management
+          sed -i 's/# CONFIG_FAIR_GROUP_SCHED is not set/CONFIG_FAIR_GROUP_SCHED=y/g' arch/arm64/configs/alioth_defconfig
+          echo "CONFIG_FAIR_GROUP_SCHED=y" >> arch/arm64/configs/alioth_defconfig
+
+          # Disable CFI and Shadow Call Stack to prevent traps with stock vendor modules
+          sed -i 's/CONFIG_CFI_CLANG=y/# CONFIG_CFI_CLANG is not set/g' arch/arm64/configs/alioth_defconfig
+          sed -i 's/CONFIG_SHADOW_CALL_STACK=y/# CONFIG_SHADOW_CALL_STACK is not set/g' arch/arm64/configs/alioth_defconfig
+          echo "# CONFIG_CFI_CLANG is not set" >> arch/arm64/configs/alioth_defconfig
+          echo "# CONFIG_SHADOW_CALL_STACK is not set" >> arch/arm64/configs/alioth_defconfig
+
+          # Match standard MIUI vermagic & load settings
+          sed -i 's/CONFIG_LOCALVERSION=.*/CONFIG_LOCALVERSION="-perf"/g' arch/arm64/configs/alioth_defconfig
           echo "CONFIG_MODULE_FORCE_LOAD=y" >> arch/arm64/configs/alioth_defconfig
-          echo "CONFIG_MODVERSIONS=n" >> arch/arm64/configs/alioth_defconfig
-          echo "# CONFIG_UDMABUF is not set" >> arch/arm64/configs/alioth_defconfig
-          echo 'CONFIG_LOCALVERSION="-perf"' >> arch/arm64/configs/alioth_defconfig
 
       - name: Compile Kernel
         run: |
@@ -127,6 +94,11 @@ jobs:
           fi
           cat out/arch/arm64/boot/dts/vendor/qcom/kona*.dtb > ak/dtb 2>/dev/null || true
 
+          # IMPORTANT FOR MIUI:
+          # Do NOT patch vendor_boot on MIUI/HyperOS (corrupts original vendor certs/modules)
+          # We remove vendor_boot patching block from anykernel.sh for MIUI package
+          sed -i '/vendor_boot shell variables/,$d' ak/anykernel.sh
+
           DATE_TAG=$(date +'%Y%m%d-%H%M')
           ZIP_NAME="AliothX-MIUI-alioth-${DATE_TAG}.zip"
           (cd ak && zip -r9 "../${ZIP_NAME}" . -x '*.git*')
@@ -146,11 +118,14 @@ jobs:
           tag_name: miui-v${{ env.DATE_TAG }}
           name: AliothX MIUI/HyperOS Edition (${{ env.DATE_TAG }})
           body: |
-            ### AliothX Kernel — MIUI / HyperOS Stock ROM
-            - **Compatibilidade**: Feito especificamente para a ROM Original de fábrica (MIUI 14 / HyperOS).
-            - **WALT Stubs**: Injeção de nós `/proc/sys/kernel/sched_walt_*` para compatibilidade com o `perfservice` da MIUI sem perder o EEVDF.
-            - **ABI Fix**: Restauração da ABI gráfica `dma-buf` e `dma-fence` 32-bit para os módulos da GPU (`adreno.ko`).
+            ### AliothX Kernel — MIUI 14 / HyperOS Edition
             - **SoC**: Qualcomm Snapdragon 870 5G (SM8250-AC)
+            - **Compatibilidade**: Desenvolvido e ajustado sob medida para a ROM Original de fábrica (MIUI 14 / HyperOS).
+            - **AnyKernel3 Seguro para MIUI**: Atualiza a partição de boot sem corromper o `vendor_boot` original da MIUI.
+            - **Cgroups & Scheduler**: `CONFIG_FAIR_GROUP_SCHED=y` ativado para compatibilidade total com o sistema de cgroups da MIUI.
+            - **Módulos do Vendor**: Módulos proprietários (Wi-Fi QCA6390, Áudio WCD/Bolero) protegidos contra pânico de CFI/SCS.
+            - **Escalonador**: EEVDF (Earliest Eligible Virtual Deadline First) + CASS.
+            - **Compressão**: ZSTD 1.5.7.
           files: ${{ env.ZIP_NAME }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
