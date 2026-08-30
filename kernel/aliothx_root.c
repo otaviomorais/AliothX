@@ -68,7 +68,6 @@ int aliothx_escalate_to_root(void)
 	commit_creds(new_cred);
 
 	/* Switch to global init mount namespace so all partitions and mounts are accessible */
-	switch_task_namespaces(current, &init_nsproxy);
 
 	return 0;
 }
