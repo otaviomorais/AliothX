@@ -35,26 +35,34 @@ jobs:
 
       - name: Patch Kernel for MIUI ABI & Module Compatibility
         run: |
-          echo "Patching kernel/module.c to ignore vermagic checks..."
+          echo "Patching kernel/module.c to ignore vermagic checks & CRCs..."
           sed -i 's/return -ENOEXEC;/return 0;/g' kernel/module.c
           sed -i 's/if (!same_magic(modmagic, vermagic, info->index.vers))/if (0)/g' kernel/module.c
           sed -i 's/pr_warn("%s: disagrees about version of symbol/return 1; pr_warn("%s: disagrees about version of symbol/g' kernel/module.c
           
-          echo "Restoring dma-buf ABI for MIUI proprietary modules (adreno, qca_cld3)..."
-          curl -sL "https://raw.githubusercontent.com/TIMISONG-dev/kernel_xiaomi_sm8250/magictime-miui/include/linux/dma-buf.h" -o include/linux/dma-buf.h
-          curl -sL "https://raw.githubusercontent.com/TIMISONG-dev/kernel_xiaomi_sm8250/magictime-miui/drivers/dma-buf/dma-buf.c" -o drivers/dma-buf/dma-buf.c
-          sed -i 's/vma_set_file(vma, dmabuf->file);/if (vma->vm_file) fput(vma->vm_file); get_file(dmabuf->file); vma->vm_file = dmabuf->file;/g' drivers/dma-buf/dma-buf.c
-          curl -sL "https://raw.githubusercontent.com/TIMISONG-dev/kernel_xiaomi_sm8250/magictime-miui/scripts/mkcompile_h" -o scripts/mkcompile_h
+          echo "Restoring full dma-buf, dma-fence & reservation ABI for MIUI proprietary GPU/Display modules..."
+          BASE_URL="https://raw.githubusercontent.com/TIMISONG-dev/kernel_xiaomi_sm8250/magictime-miui"
+          
+          # Download headers
+          curl -sL "${BASE_URL}/include/linux/dma-buf.h" -o include/linux/dma-buf.h
+          curl -sL "${BASE_URL}/include/linux/dma-fence.h" -o include/linux/dma-fence.h
+          curl -sL "${BASE_URL}/include/linux/reservation.h" -o include/linux/reservation.h
+          
+          # Download drivers
+          curl -sL "${BASE_URL}/drivers/dma-buf/dma-buf.c" -o drivers/dma-buf/dma-buf.c
+          curl -sL "${BASE_URL}/drivers/dma-buf/dma-fence.c" -o drivers/dma-buf/dma-fence.c
+          curl -sL "${BASE_URL}/drivers/dma-buf/reservation.c" -o drivers/dma-buf/reservation.c
+          curl -sL "${BASE_URL}/scripts/mkcompile_h" -o scripts/mkcompile_h
           chmod +x scripts/mkcompile_h
+          
+          # Fix vma_set_file if missing in mm.h
+          sed -i 's/vma_set_file(vma, dmabuf->file);/if (vma->vm_file) fput(vma->vm_file); get_file(dmabuf->file); vma->vm_file = dmabuf->file;/g' drivers/dma-buf/dma-buf.c
           
           echo "Applying MIUI defconfig flags..."
           echo "CONFIG_MODULE_FORCE_LOAD=y" >> arch/arm64/configs/alioth_defconfig
           echo "CONFIG_MODVERSIONS=n" >> arch/arm64/configs/alioth_defconfig
           echo "# CONFIG_UDMABUF is not set" >> arch/arm64/configs/alioth_defconfig
-          
-          # Force CONFIG_LOCALVERSION if necessary
           echo 'CONFIG_LOCALVERSION="-perf"' >> arch/arm64/configs/alioth_defconfig
-
       - name: Compile Kernel
         run: |
           mkdir -p out
