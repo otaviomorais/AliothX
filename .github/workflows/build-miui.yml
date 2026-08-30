@@ -38,6 +38,7 @@ jobs:
           echo "Patching kernel/module.c to ignore vermagic checks..."
           sed -i 's/return -ENOEXEC;/return 0;/g' kernel/module.c
           sed -i 's/if (!same_magic(modmagic, vermagic, info->index.vers))/if (0)/g' kernel/module.c
+          sed -i 's/pr_warn("%s: disagrees about version of symbol/return 1; pr_warn("%s: disagrees about version of symbol/g' kernel/module.c
           
           echo "Restoring dma-buf ABI for MIUI proprietary modules (adreno, qca_cld3)..."
           curl -sL "https://raw.githubusercontent.com/TIMISONG-dev/kernel_xiaomi_sm8250/magictime-miui/include/linux/dma-buf.h" -o include/linux/dma-buf.h
