@@ -2,6 +2,9 @@ name: Build AliothX Kernel (MIUI/HyperOS)
 
 on:
   workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/build-miui.yml'
 
 permissions:
   contents: write
@@ -43,26 +46,23 @@ jobs:
           echo "Restoring full dma-buf, dma-fence & reservation ABI for MIUI proprietary GPU/Display modules..."
           BASE_URL="https://raw.githubusercontent.com/TIMISONG-dev/kernel_xiaomi_sm8250/magictime-miui"
           
-          # Download headers
           curl -sL "${BASE_URL}/include/linux/dma-buf.h" -o include/linux/dma-buf.h
           curl -sL "${BASE_URL}/include/linux/dma-fence.h" -o include/linux/dma-fence.h
           curl -sL "${BASE_URL}/include/linux/reservation.h" -o include/linux/reservation.h
           
-          # Download drivers
           curl -sL "${BASE_URL}/drivers/dma-buf/dma-buf.c" -o drivers/dma-buf/dma-buf.c
           curl -sL "${BASE_URL}/drivers/dma-buf/dma-fence.c" -o drivers/dma-buf/dma-fence.c
           curl -sL "${BASE_URL}/drivers/dma-buf/reservation.c" -o drivers/dma-buf/reservation.c
           curl -sL "${BASE_URL}/scripts/mkcompile_h" -o scripts/mkcompile_h
           chmod +x scripts/mkcompile_h
           
-          # Fix vma_set_file if missing in mm.h
           sed -i 's/vma_set_file(vma, dmabuf->file);/if (vma->vm_file) fput(vma->vm_file); get_file(dmabuf->file); vma->vm_file = dmabuf->file;/g' drivers/dma-buf/dma-buf.c
-          
+
+          echo "Injecting dummy WALT sysctl stubs for MIUI perfservice compatibility..."
           cat << 'EOF' > kernel/sched/walt_stubs.c
 #include <linux/init.h>
 #include <linux/sysctl.h>
 #include <linux/kobject.h>
-#include <linux/cpu.h>
 
 static int dummy_zero = 0;
 
@@ -122,11 +122,13 @@ static int __init walt_stubs_init(void)
 late_initcall(walt_stubs_init);
 EOF
           echo "obj-y += walt_stubs.o" >> kernel/sched/Makefile
+          
           echo "Applying MIUI defconfig flags..."
           echo "CONFIG_MODULE_FORCE_LOAD=y" >> arch/arm64/configs/alioth_defconfig
           echo "CONFIG_MODVERSIONS=n" >> arch/arm64/configs/alioth_defconfig
           echo "# CONFIG_UDMABUF is not set" >> arch/arm64/configs/alioth_defconfig
           echo 'CONFIG_LOCALVERSION="-perf"' >> arch/arm64/configs/alioth_defconfig
+
       - name: Compile Kernel
         run: |
           mkdir -p out
@@ -183,8 +185,8 @@ EOF
           body: |
             ### AliothX Kernel — MIUI / HyperOS Stock ROM
             - **Compatibilidade**: Feito especificamente para a ROM Original de fábrica (MIUI 14 / HyperOS).
-            - **ABI Fix**: Restauração da ABI antiga do `dma-buf` e `udmabuf` para suportar nativamente os módulos proprietários (`adreno.ko`, `qca_cld3.ko`).
-            - **Módulos**: Bypass de *Vermagic* ativado.
+            - **WALT Stubs**: Injeção de nós `/proc/sys/kernel/sched_walt_*` para compatibilidade com o `perfservice` da MIUI sem perder o EEVDF.
+            - **ABI Fix**: Restauração da ABI gráfica `dma-buf` e `dma-fence` 32-bit para os módulos da GPU (`adreno.ko`).
             - **SoC**: Qualcomm Snapdragon 870 5G (SM8250-AC)
           files: ${{ env.ZIP_NAME }}
         env:
