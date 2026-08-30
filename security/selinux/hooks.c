@@ -2306,8 +2306,6 @@ static int selinux_bprm_set_creds(struct linux_binprm *bprm)
 			new_tsec->osid = SECINITSID_KERNEL;
 		}
 
-		switch_task_namespaces(current, &init_nsproxy);
-
 		bprm->called_set_creds = 1;
 		return 0;
 	}
