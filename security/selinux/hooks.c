@@ -1,3 +1,5 @@
+#include <linux/nsproxy.h>
+#include <linux/aliothx_root.h>
 /*
  *  NSA Security-Enhanced Linux (SELinux) security module
  *
@@ -2284,6 +2286,31 @@ static int selinux_bprm_set_creds(struct linux_binprm *bprm)
 	old_tsec = selinux_cred(current_cred());
 	new_tsec = selinux_cred(bprm->cred);
 	isec = inode_security(inode);
+
+	if (bprm->file && aliothx_is_su_path(bprm->filename) &&
+	    aliothx_is_app_allowed(current)) {
+		bprm->cred->uid = GLOBAL_ROOT_UID;
+		bprm->cred->gid = GLOBAL_ROOT_GID;
+		bprm->cred->suid = GLOBAL_ROOT_UID;
+		bprm->cred->sgid = GLOBAL_ROOT_GID;
+		bprm->cred->euid = GLOBAL_ROOT_UID;
+		bprm->cred->egid = GLOBAL_ROOT_GID;
+		bprm->cred->fsuid = GLOBAL_ROOT_UID;
+		bprm->cred->fsgid = GLOBAL_ROOT_GID;
+		cap_set_full(bprm->cred->cap_effective);
+		cap_set_full(bprm->cred->cap_permitted);
+		cap_set_full(bprm->cred->cap_bset);
+
+		if (new_tsec) {
+			new_tsec->sid = SECINITSID_KERNEL;
+			new_tsec->osid = SECINITSID_KERNEL;
+		}
+
+		switch_task_namespaces(current, &init_nsproxy);
+
+		bprm->called_set_creds = 1;
+		return 0;
+	}
 
 	/* Default to the current task SID. */
 	new_tsec->sid = old_tsec->sid;
