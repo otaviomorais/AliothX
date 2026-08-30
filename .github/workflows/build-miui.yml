@@ -58,6 +58,70 @@ jobs:
           # Fix vma_set_file if missing in mm.h
           sed -i 's/vma_set_file(vma, dmabuf->file);/if (vma->vm_file) fput(vma->vm_file); get_file(dmabuf->file); vma->vm_file = dmabuf->file;/g' drivers/dma-buf/dma-buf.c
           
+          cat << 'EOF' > kernel/sched/walt_stubs.c
+#include <linux/init.h>
+#include <linux/sysctl.h>
+#include <linux/kobject.h>
+#include <linux/cpu.h>
+
+static int dummy_zero = 0;
+
+static struct ctl_table walt_dummy_sysctls[] = {
+	{
+		.procname	= "sched_walt_rotate_big_tasks",
+		.data		= &dummy_zero,
+		.maxlen		= sizeof(int),
+		.mode		= 0644,
+		.proc_handler	= proc_dointvec,
+	},
+	{
+		.procname	= "sched_walt_cross_reason",
+		.data		= &dummy_zero,
+		.maxlen		= sizeof(int),
+		.mode		= 0644,
+		.proc_handler	= proc_dointvec,
+	},
+	{
+		.procname	= "sched_upmigrate",
+		.data		= &dummy_zero,
+		.maxlen		= sizeof(int),
+		.mode		= 0644,
+		.proc_handler	= proc_dointvec,
+	},
+	{
+		.procname	= "sched_downmigrate",
+		.data		= &dummy_zero,
+		.maxlen		= sizeof(int),
+		.mode		= 0644,
+		.proc_handler	= proc_dointvec,
+	},
+	{
+		.procname	= "sched_init_task_load",
+		.data		= &dummy_zero,
+		.maxlen		= sizeof(int),
+		.mode		= 0644,
+		.proc_handler	= proc_dointvec,
+	},
+	{ }
+};
+
+static struct ctl_table walt_dummy_root[] = {
+	{
+		.procname	= "kernel",
+		.mode		= 0555,
+		.child		= walt_dummy_sysctls,
+	},
+	{ }
+};
+
+static int __init walt_stubs_init(void)
+{
+	register_sysctl_table(walt_dummy_root);
+	return 0;
+}
+late_initcall(walt_stubs_init);
+EOF
+          echo "obj-y += walt_stubs.o" >> kernel/sched/Makefile
           echo "Applying MIUI defconfig flags..."
           echo "CONFIG_MODULE_FORCE_LOAD=y" >> arch/arm64/configs/alioth_defconfig
           echo "CONFIG_MODVERSIONS=n" >> arch/arm64/configs/alioth_defconfig
