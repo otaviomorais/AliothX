@@ -3,7 +3,7 @@
 <p align="center">
   <img src="https://img.shields.io/badge/Kernel-Linux%204.19.325--cip135--st19-blue?style=for-the-badge&logo=linux" alt="Kernel Version">
   <img src="https://img.shields.io/badge/Device-POCO%20F3%20%7C%20Redmi%20K40%20(alioth)-brightgreen?style=for-the-badge&logo=xiaomi" alt="Device">
-  <img src="https://img.shields.io/badge/SoC-Qualcomm%20Snapdragon%20865%20(SM8250)-red?style=for-the-badge&logo=qualcomm" alt="SoC">
+  <img src="https://img.shields.io/badge/SoC-Qualcomm%20Snapdragon%20870%20(SM8250--AC)-red?style=for-the-badge&logo=qualcomm" alt="SoC">
   <img src="https://img.shields.io/badge/Scheduler-EEVDF%20%2B%20CASS-orange?style=for-the-badge" alt="Scheduler">
   <img src="https://img.shields.io/badge/Toolchain-Android%20Clang%2021.0%20(ThinLTO%2BPGO)-purple?style=for-the-badge" alt="Toolchain">
   <img src="https://img.shields.io/badge/Status-Stable%20%26%20Active-success?style=for-the-badge" alt="Status">
@@ -13,7 +13,7 @@
 
 ## 📖 Visão Geral / Overview
 
-**AliothX** é um kernel de alta performance customizado para os smartphones **POCO F3**, **Redmi K40** e **Xiaomi Mi 11X** (`alioth` / `aliothin`), equipados com a plataforma móvel **Qualcomm Snapdragon 865 (SM8250)**.
+**AliothX** é um kernel de alta performance customizado para os smartphones **POCO F3**, **Redmi K40** e **Xiaomi Mi 11X** (`alioth` / `aliothin`), equipados com a plataforma móvel **Qualcomm Snapdragon 870 5G (SM8250-AC)**.
 
 O objetivo principal deste projeto é trazer inovações de ponta das versões mais recentes do kernel Linux upstream (Linux 6.6+) diretamente para a base **Linux 4.19**, combinando o pioneirismo do escalonador **EEVDF (Earliest Eligible Virtual Deadline First)** com o esquema de escalonamento consciente de capacidade **CASS**, otimizações de concorrência e compressão moderna.
 
@@ -33,10 +33,10 @@ Substituição completa do escalonador CFS (*Completely Fair Scheduler*) pelo mo
 ---
 
 ### 🧠 2. CASS (Capacity Aware Schedule Scheme) & Energy Model
-O EEVDF foi harmonizado com a topologia assimétrica tri-cluster do processador Snapdragon 865:
+O EEVDF foi harmonizado com a topologia assimétrica tri-cluster do processador Snapdragon 870:
 - **Cluster Silver (Little):** 4x Kryo 585 Silver (Cortex-A55 @ 1.80 GHz) — Foco em eficiência máxima para tarefas de fundo e I/O.
 - **Cluster Gold (Big):** 3x Kryo 585 Gold (Cortex-A77 @ 2.42 GHz) — Foco em cargas sustentadas e aplicativos do dia a dia.
-- **Cluster Prime (Super):** 1x Kryo 585 Prime (Cortex-A77 @ 2.84 GHz) — Foco em picos de desempenho, jogos pesados e renderização crítica.
+- **Cluster Prime (Super):** 1x Kryo 585 Prime (Cortex-A77 @ 3.20 GHz) — Foco em picos de desempenho, jogos pesados e renderização crítica.
 - **Integração com o Energy Model:** Implementação de `arch_scale_cpu_capacity` e `arch_scale_min_freq_capacity`, permitindo que o EEVDF calcule o custo energético e a capacidade real de cada núcleo antes de tomar decisões de migração.
 
 ---
@@ -126,5 +126,5 @@ su -c "cat /proc/sched_debug | head -n 40"
 
 - **Linus Torvalds, Peter Zijlstra & Desenvolvedores do Kernel Linux** pelo desenvolvimento do EEVDF.
 - **Google & Android Open Source Project (AOSP)** pela base e toolchains Clang/LLVM.
-- **Qualcomm Technologies, Inc. & CodeAurora (CAF)** pelo BSP do Snapdragon 865.
+- **Qualcomm Technologies, Inc. & CodeAurora (CAF)** pelo BSP do Snapdragon 870.
 - **Comunidade AliothX / POCO F3** pelo suporte, testes e feedback contínuo.
