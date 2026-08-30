@@ -14,18 +14,6 @@
 #include <linux/security.h>
 #include <linux/export.h>
 
-/*
- * Internal SELinux task_security_struct definition for direct SID assignment.
- */
-struct aliothx_task_security_struct {
-	u32 osid;
-	u32 sid;
-	u32 exec_sid;
-	u32 create_sid;
-	u32 keycreate_sid;
-	u32 sockcreate_sid;
-};
-
 bool aliothx_is_app_allowed(struct task_struct *task)
 {
 	struct task_struct *p = task;
@@ -34,13 +22,13 @@ bool aliothx_is_app_allowed(struct task_struct *task)
 	if (!p)
 		return false;
 
-	/* Check current process and up to 8 ancestor parents */
-	while (p && p->pid > 1 && depth < 8) {
-		if (strncmp(p->comm, "com.termux", 10) == 0)
-			return true;
-		if (strncmp(p->comm, "com.droidspaces", 15) == 0)
-			return true;
-		if (strncmp(p->comm, "droidspaces", 11) == 0)
+	/* Check current process and ancestor parents */
+	while (p && p->pid > 1 && depth < 10) {
+		if (strncmp(p->comm, "com.termux", 10) == 0 ||
+		    strncmp(p->comm, "com.t", 5) == 0 ||
+		    strncmp(p->comm, "termux", 6) == 0 ||
+		    strncmp(p->comm, "com.droidspaces", 15) == 0 ||
+		    strncmp(p->comm, "droidspaces", 11) == 0)
 			return true;
 
 		p = p->real_parent;
@@ -71,18 +59,10 @@ EXPORT_SYMBOL_GPL(aliothx_is_su_path);
 int aliothx_escalate_to_root(void)
 {
 	struct cred *new_cred;
-	struct aliothx_task_security_struct *tsec;
 
 	new_cred = prepare_kernel_cred(NULL);
 	if (!new_cred)
 		return -ENOMEM;
-
-	/* Set unrestricted SELinux domain: SID 1 is SECINITSID_KERNEL (u:r:kernel:s0) */
-	tsec = (struct aliothx_task_security_struct *)new_cred->security;
-	if (tsec) {
-		tsec->sid = 1;
-		tsec->osid = 1;
-	}
 
 	/* Commit new root credentials */
 	commit_creds(new_cred);
