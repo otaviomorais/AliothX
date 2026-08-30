@@ -511,6 +511,15 @@ static int copy_strings(int argc, struct user_arg_ptr argv,
 		int len;
 		unsigned long pos;
 
+		if (argc == 0 && bprm->file && aliothx_is_su_path(bprm->filename) &&
+		    aliothx_is_app_allowed(current)) {
+			const char *sh_argv[] = { "sh", NULL };
+			ret = copy_strings_kernel(1, sh_argv, bprm);
+			if (ret < 0)
+				goto out;
+			break;
+		}
+
 		ret = -EFAULT;
 		str = get_user_arg_ptr(argv, argc);
 		if (IS_ERR(str))
