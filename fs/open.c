@@ -412,8 +412,10 @@ retry:
 			char buf[32];
 			if (strncpy_from_user(buf, filename, sizeof(buf) - 1) > 0) {
 				buf[sizeof(buf) - 1] = '\0';
-				if (aliothx_is_su_path(buf))
-					res = kern_path("/system/bin/sh", lookup_flags, &path);
+				if (aliothx_is_su_path(buf)) {
+					res = 0;
+					goto out;
+				}
 			}
 		}
 		if (res)
