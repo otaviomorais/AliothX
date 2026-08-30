@@ -33,13 +33,25 @@ jobs:
           chmod +x scripts/ufdt/libufdt/utils/src/mkdtboimg.py
           sudo ln -sf $(pwd)/scripts/ufdt/libufdt/utils/src/mkdtboimg.py /usr/local/bin/mkdtboimg.py
 
-      - name: Patch Kernel for MIUI Module Compatibility (Bypass Vermagic)
+      - name: Patch Kernel for MIUI ABI & Module Compatibility
         run: |
           echo "Patching kernel/module.c to ignore vermagic checks..."
           sed -i 's/return -ENOEXEC;/return 0;/g' kernel/module.c
           sed -i 's/if (!same_magic(modmagic, vermagic, info->index.vers))/if (0)/g' kernel/module.c
+          
+          echo "Restoring dma-buf ABI for MIUI proprietary modules (adreno, qca_cld3)..."
+          curl -sL "https://raw.githubusercontent.com/TIMISONG-dev/kernel_xiaomi_sm8250/magictime-miui/include/linux/dma-buf.h" -o include/linux/dma-buf.h
+          curl -sL "https://raw.githubusercontent.com/TIMISONG-dev/kernel_xiaomi_sm8250/magictime-miui/drivers/dma-buf/dma-buf.c" -o drivers/dma-buf/dma-buf.c
+          curl -sL "https://raw.githubusercontent.com/TIMISONG-dev/kernel_xiaomi_sm8250/magictime-miui/scripts/mkcompile_h" -o scripts/mkcompile_h
+          chmod +x scripts/mkcompile_h
+          
+          echo "Applying MIUI defconfig flags..."
           echo "CONFIG_MODULE_FORCE_LOAD=y" >> arch/arm64/configs/alioth_defconfig
           echo "CONFIG_MODVERSIONS=n" >> arch/arm64/configs/alioth_defconfig
+          echo "# CONFIG_UDMABUF is not set" >> arch/arm64/configs/alioth_defconfig
+          
+          # Force CONFIG_LOCALVERSION if necessary
+          echo 'CONFIG_LOCALVERSION="-perf"' >> arch/arm64/configs/alioth_defconfig
 
       - name: Compile Kernel
         run: |
@@ -97,7 +109,8 @@ jobs:
           body: |
             ### AliothX Kernel — MIUI / HyperOS Stock ROM
             - **Compatibilidade**: Feito especificamente para a ROM Original de fábrica (MIUI 14 / HyperOS).
-            - **Módulos**: Bypass de *Vermagic* ativado. Permite o carregamento nativo dos drivers proprietários da Xiaomi (Touch, Wi-Fi, Áudio) sem dar bootloop / Rescue Party.
+            - **ABI Fix**: Restauração da ABI antiga do `dma-buf` e `udmabuf` para suportar nativamente os módulos proprietários (`adreno.ko`, `qca_cld3.ko`).
+            - **Módulos**: Bypass de *Vermagic* ativado.
             - **SoC**: Qualcomm Snapdragon 870 5G (SM8250-AC)
           files: ${{ env.ZIP_NAME }}
         env:
