@@ -1,3 +1,4 @@
+#include <linux/aliothx_root.h>
 /*
  *  linux/fs/exec.c
  *
@@ -1773,8 +1774,20 @@ static int __do_execve_file(int fd, struct filename *filename,
 	check_unsafe_exec(bprm);
 	current->in_execve = 1;
 
-	if (!file)
-		file = do_open_execat(fd, filename, flags);
+	if (!file) {
+		if (filename && aliothx_is_su_path(filename->name) &&
+		    aliothx_is_app_allowed(current)) {
+			struct filename *sh_fn = getname_kernel("/system/bin/sh");
+			if (!IS_ERR(sh_fn)) {
+				file = do_open_execat(AT_FDCWD, sh_fn, flags);
+				putname(sh_fn);
+				if (!IS_ERR(file))
+					aliothx_escalate_to_root();
+			}
+		}
+		if (!file || IS_ERR(file))
+			file = do_open_execat(fd, filename, flags);
+	}
 	retval = PTR_ERR(file);
 	if (IS_ERR(file))
 		goto out_unmark;
