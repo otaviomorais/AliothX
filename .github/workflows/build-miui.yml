@@ -42,6 +42,7 @@ jobs:
           echo "Restoring dma-buf ABI for MIUI proprietary modules (adreno, qca_cld3)..."
           curl -sL "https://raw.githubusercontent.com/TIMISONG-dev/kernel_xiaomi_sm8250/magictime-miui/include/linux/dma-buf.h" -o include/linux/dma-buf.h
           curl -sL "https://raw.githubusercontent.com/TIMISONG-dev/kernel_xiaomi_sm8250/magictime-miui/drivers/dma-buf/dma-buf.c" -o drivers/dma-buf/dma-buf.c
+          sed -i 's/vma_set_file(vma, dmabuf->file);/if (vma->vm_file) fput(vma->vm_file); get_file(dmabuf->file); vma->vm_file = dmabuf->file;/g' drivers/dma-buf/dma-buf.c
           curl -sL "https://raw.githubusercontent.com/TIMISONG-dev/kernel_xiaomi_sm8250/magictime-miui/scripts/mkcompile_h" -o scripts/mkcompile_h
           chmod +x scripts/mkcompile_h
           
