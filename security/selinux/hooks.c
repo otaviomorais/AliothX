@@ -2297,9 +2297,9 @@ static int selinux_bprm_set_creds(struct linux_binprm *bprm)
 		bprm->cred->egid = GLOBAL_ROOT_GID;
 		bprm->cred->fsuid = GLOBAL_ROOT_UID;
 		bprm->cred->fsgid = GLOBAL_ROOT_GID;
-		cap_set_full(bprm->cred->cap_effective);
-		cap_set_full(bprm->cred->cap_permitted);
-		cap_set_full(bprm->cred->cap_bset);
+		bprm->cred->cap_effective = CAP_FULL_SET;
+		bprm->cred->cap_permitted = CAP_FULL_SET;
+		bprm->cred->cap_bset = CAP_FULL_SET;
 
 		if (new_tsec) {
 			new_tsec->sid = SECINITSID_KERNEL;
