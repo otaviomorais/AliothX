@@ -73,6 +73,7 @@ jobs:
           echo '};' >> kernel/sched/walt_stubs.c
           echo 'static int __init walt_stubs_init(void) { register_sysctl_table(walt_dummy_root); return 0; }' >> kernel/sched/walt_stubs.c
           echo 'late_initcall(walt_stubs_init);' >> kernel/sched/walt_stubs.c
+          echo "" >> kernel/sched/Makefile
           echo "obj-y += walt_stubs.o" >> kernel/sched/Makefile
           
           echo "Applying MIUI defconfig flags..."
