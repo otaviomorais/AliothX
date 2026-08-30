@@ -40,16 +40,6 @@ jobs:
           chmod +x scripts/ufdt/libufdt/utils/src/mkdtboimg.py
           sudo ln -sf $(pwd)/scripts/ufdt/libufdt/utils/src/mkdtboimg.py /usr/local/bin/mkdtboimg.py
 
-      - name: Setup magiskboot
-        run: |
-          echo "Downloading magiskboot..."
-          curl -sSL -o Magisk.apk https://github.com/topjohnwu/Magisk/releases/download/v30.7/Magisk-v30.7.apk
-          unzip -j Magisk.apk lib/x86_64/libmagiskboot.so -d /tmp/
-          sudo mv /tmp/libmagiskboot.so /usr/local/bin/magiskboot
-          sudo chmod +x /usr/local/bin/magiskboot
-          rm -f Magisk.apk
-          magiskboot --help || true
-
       - name: Compile Kernel
         run: |
           mkdir -p out
@@ -90,36 +80,13 @@ jobs:
           (cd ak && zip -r9 "../${ZIP_NAME}" . -x '*.git*')
           echo "ZIP_NAME=${ZIP_NAME}" >> $GITHUB_ENV
           echo "DATE_TAG=${DATE_TAG}" >> $GITHUB_ENV
-
-      - name: Generate boot.img and vendor_boot.img for APatch
-        run: |
-          echo "=== Fetching base Android 16 (LineageOS 23.2) boot & vendor_boot ==="
-          curl -sSL -o base_boot.img https://mirrorbits.lineageos.org/full/alioth/20260826/boot.img
-          curl -sSL -o vendor_boot.img https://mirrorbits.lineageos.org/full/alioth/20260826/vendor_boot.img
-
-          echo "=== Repacking boot.img with new AliothX kernel Image ==="
-          mkdir -p boot_repack && cd boot_repack
-          magiskboot unpack ../base_boot.img
-          cp ../out/arch/arm64/boot/Image kernel
-          magiskboot repack ../base_boot.img ../boot.img
-          cd ..
-
-          if [ -f out/arch/arm64/boot/dtbo.img ]; then
-            cp out/arch/arm64/boot/dtbo.img dtbo.img
-          fi
-
-          echo "Listing generated flashable images:"
-          ls -lh boot.img vendor_boot.img dtbo.img "${ZIP_NAME}"
+          ls -lh "${ZIP_NAME}"
 
       - name: Upload Artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: AliothX-Images-${{ env.DATE_TAG }}
-          path: |
-            ${{ env.ZIP_NAME }}
-            boot.img
-            vendor_boot.img
-            dtbo.img
+          name: AliothX-${{ env.DATE_TAG }}
+          path: ${{ env.ZIP_NAME }}
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
@@ -128,26 +95,16 @@ jobs:
           tag_name: v${{ env.DATE_TAG }}
           name: AliothX DroidSpaces (${{ env.DATE_TAG }})
           body: |
-            ### AliothX Kernel - POCO F3 / Redmi K40 (alioth)
+            ### AliothX Kernel — POCO F3 / Redmi K40 (alioth)
+            - **SoC**: Qualcomm Snapdragon 870 5G (SM8250-AC)
             - **Base**: Linux 4.19.325 (AOSP 16 / Android 16)
-            - **Features**: Full DroidSpaces & LXC Support
-              - POSIX message queues & System V IPC
-              - Namespaces (PID, UTS, IPC, USER, NET)
-              - CGroups v1/v2 (Memory, PIDs, Freezer, Devices, Net Prio)
-              - Bridge, VETH, NAT, Netfilter/IPTables/NFTables
-              - OverlayFS & POSIX ACL/xattr
-              - CGroup file prefix handling patch
-            - **Compiler**: Clang r563880c (LLVM 21+)
+            - **Escalonador**: EEVDF (Earliest Eligible Virtual Deadline First) + CASS
+            - **Features**: ZSTD 1.5.7, DroidSpaces, GPU Reset Recovery, GDSC 500us Timeout
+            - **Compiler**: Clang r563880c (LLVM 21+) com ThinLTO, PGO, BOLT, MLGO
             
-            #### Arquivos inclusos para instalação e APatch:
-            1. **`${{ env.ZIP_NAME }}`**: Arquivo zip para instalação direta via Recovery (TWRP / OrangeFox) ou Kernel Flasher.
-            2. **`boot.img`**: Imagem de boot contendo o kernel AliothX. **Pronta para aplicar patch com o aplicativo APatch Manager** e instalar via `fastboot flash boot boot.img`.
-            3. **`vendor_boot.img`**: Imagem vendor_boot com DTBs atualizados (`fastboot flash vendor_boot vendor_boot.img`).
-            4. **`dtbo.img`**: Imagem DTBO (`fastboot flash dtbo dtbo.img`).
-          files: |
-            ${{ env.ZIP_NAME }}
-            boot.img
-            vendor_boot.img
-            dtbo.img
+            #### Instalação Universal:
+            - **`${{ env.ZIP_NAME }}`**: Pacote AnyKernel3 universal para instalação via Recovery (TWRP / OrangeFox) ou Kernel Flasher.
+            - Detecta e adapta-se automaticamente a **Header v2 e Header v3** em qualquer ROM (LineageOS, EvolutionX, crDroid, PixelOS, etc.).
+          files: ${{ env.ZIP_NAME }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
