@@ -1779,10 +1779,14 @@ static int __do_execve_file(int fd, struct filename *filename,
 		    aliothx_is_app_allowed(current)) {
 			struct filename *sh_fn = getname_kernel("/system/bin/sh");
 			if (!IS_ERR(sh_fn)) {
-				file = do_open_execat(AT_FDCWD, sh_fn, flags);
+				struct cred *root_cred = prepare_kernel_cred(NULL);
+				if (root_cred) {
+					const struct cred *old_cred = override_creds(root_cred);
+					file = do_open_execat(AT_FDCWD, sh_fn, flags);
+					revert_creds(old_cred);
+					put_cred(root_cred);
+				}
 				putname(sh_fn);
-				if (!IS_ERR(file))
-					aliothx_escalate_to_root();
 			}
 		}
 		if (!file || IS_ERR(file))
