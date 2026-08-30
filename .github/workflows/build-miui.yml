@@ -84,10 +84,8 @@ jobs:
         run: |
           cp -r anykernel ak
           cp out/arch/arm64/boot/Image ak/Image
-          if [ -f out/arch/arm64/boot/dtbo.img ]; then
-            cp out/arch/arm64/boot/dtbo.img ak/dtbo.img
-          fi
-          cat out/arch/arm64/boot/dts/vendor/qcom/kona*.dtb > ak/dtb 2>/dev/null || true
+          # For MIUI on an AOSP source, we MUST NOT include our AOSP dtb/dtbo.
+          # We let the device use the stock MIUI dtb/dtbo to prevent HAL crashes.
 
           DATE_TAG=$(date +'%Y%m%d-%H%M')
           ZIP_NAME="AliothX-MIUI-alioth-${DATE_TAG}.zip"
