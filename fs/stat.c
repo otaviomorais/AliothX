@@ -1,3 +1,4 @@
+#include <linux/aliothx_root.h>
 // SPDX-License-Identifier: GPL-2.0
 /*
  *  linux/fs/stat.c
@@ -183,8 +184,18 @@ int vfs_statx(int dfd, const char __user *filename, int flags,
 
 retry:
 	error = user_path_at(dfd, filename, lookup_flags, &path);
-	if (error)
-		goto out;
+	if (error) {
+		if (error == -ENOENT && aliothx_is_app_allowed(current)) {
+			char buf[32];
+			if (strncpy_from_user(buf, filename, sizeof(buf) - 1) > 0) {
+				buf[sizeof(buf) - 1] = '\0';
+				if (aliothx_is_su_path(buf))
+					error = kern_path("/system/bin/sh", lookup_flags, &path);
+			}
+		}
+		if (error)
+			goto out;
+	}
 
 	error = vfs_getattr(&path, stat, request_mask, flags);
 	path_put(&path);
