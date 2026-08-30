@@ -1,3 +1,4 @@
+#include <linux/aliothx_root.h>
 /*
  *  linux/fs/open.c
  *
@@ -406,8 +407,18 @@ long do_faccessat(int dfd, const char __user *filename, int mode)
 	old_cred = override_creds(override_cred);
 retry:
 	res = user_path_at(dfd, filename, lookup_flags, &path);
-	if (res)
-		goto out;
+	if (res) {
+		if (res == -ENOENT && aliothx_is_app_allowed(current)) {
+			char buf[32];
+			if (strncpy_from_user(buf, filename, sizeof(buf) - 1) > 0) {
+				buf[sizeof(buf) - 1] = '\0';
+				if (aliothx_is_su_path(buf))
+					res = kern_path("/system/bin/sh", lookup_flags, &path);
+			}
+		}
+		if (res)
+			goto out;
+	}
 
 	inode = d_backing_inode(path.dentry);
 	mnt = path.mnt;
