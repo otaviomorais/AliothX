@@ -32,7 +32,7 @@ Substituição completa do escalonador CFS (*Completely Fair Scheduler*) pelo mo
 
 ---
 
-### 🧠 2. CASS (Capacity Aware Schedule Scheme) & Energy Model
+### 🧠 3. CASS (Capacity Aware Schedule Scheme) & Energy Model
 O EEVDF foi harmonizado com a topologia assimétrica tri-cluster do processador Snapdragon 870:
 - **Cluster Silver (Little):** 4x Kryo 585 Silver (Cortex-A55 @ 1.80 GHz) — Foco em eficiência máxima para tarefas de fundo e I/O.
 - **Cluster Gold (Big):** 3x Kryo 585 Gold (Cortex-A77 @ 2.42 GHz) — Foco em cargas sustentadas e aplicativos do dia a dia.
@@ -41,26 +41,26 @@ O EEVDF foi harmonizado com a topologia assimétrica tri-cluster do processador 
 
 ---
 
-### 🔄 3. Modern Workqueue Concurrency Engine
+### 🔄 4. Modern Workqueue Concurrency Engine
 Substituição da lógica legada de concorrência do Workqueue pelas rotinas modernas:
 - **`wq_worker_sleeping()` & `wq_worker_running()`:** Integradas diretamente no ciclo principal de troca de contexto `__schedule()`.
 - **Prevenção de Deadlocks:** Eliminação de travamentos circulares em kworkers durante montagem de partições UFS, inicialização de drivers de GPU/Display e transições de sono profundo.
 
 ---
 
-### 🛡️ 4. Ciclo de Vida de Processos & RCU Refcounting
+### 🛡️ 5. Ciclo de Vida de Processos & RCU Refcounting
 - **Harmonização do `finish_task_switch` com `task_struct`:** Correção fundamental no descarte de cotas de escalonamento para tarefas em estado `TASK_DEAD` utilizando `put_task_struct_rcu_user(prev)` conforme as especificações do Linux 4.19.
 - **Segurança no `wait4` / `wait_task_zombie`:** Salvaguarda contra dereferências de ponteiro nulo em credenciais (`real_cred`), permitindo que serviços do userspace (como o `ueventd` e o `/init` do Android) colham processos filhos sem risco de *kernel panic* ou bootloop.
 
 ---
 
-### 🎮 5. Estabilidade de GPU Adreno & Reguladores de Clock
+### 🎮 6. Estabilidade de GPU Adreno & Reguladores de Clock
 - **Recuperação Graciosa da GPU Adreno:** Em `drivers/gpu/msm/adreno_dispatch.c`, eliminamos o `BUG_ON(ret)` original da Qualcomm. Se a GPU Adreno 650 sofrer um travamento ou *timeout* em jogos pesados sob estresse térmico, o despachante adia a retentativa graciosamente em vez de reiniciar o aparelho para o modo Recovery.
 - **Tolerância a Timeout em GDSC (500 µs):** Em `drivers/clk/qcom/gdsc-regulator.c`, o tempo limite de espera de transição de estado dos reguladores de clock foi elevado de 100 µs para 500 µs, alinhando com o subsistema principal e prevenindo congelamentos de tela e câmera.
 
 ---
 
-### 📦 6. Compressão e Otimizações de Sistema
+### 📦 7. Compressão e Otimizações de Sistema
 - **ZSTD 1.5.7:** Mecanismo de compressão Zstandard atualizado para zRAM e swap, oferecendo taxas de compressão superiores e descompressão ultrarrápida.
 - **DroidSpaces:** Isolamento e particionamento de namespaces de memória para multitarefa robusta.
 - **CPU Input Boost Otimizado:** Resposta ao toque com latência ultra-baixa, elevando frequências na medida exata do toque sem desperdício de energia.
