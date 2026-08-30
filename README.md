@@ -69,42 +69,25 @@ Substituição da lógica legada de concorrência do Workqueue pelas rotinas mod
 
 ---
 
-## 📥 Download da Versão Estável
+## 📥 Download da Versão Estável (Universal ZIP)
 
-A versão mais recente, testada e homologada para uso diário está disponível na aba de Releases:
+O AliothX adota o formato universal **AnyKernel3**, garantindo compatibilidade automática com **qualquer ROM** (LineageOS, EvolutionX, crDroid, PixelOS, HyperOS, etc.), adaptando-se em tempo real tanto a **Header v2** quanto a **Header v3**.
 
-👉 [**Acessar a Release Mais Recente**](https://github.com/otaviomorais/AliothX/releases/latest)
+👉 [**Baixar a Release Mais Recente (GitHub Releases)**](https://github.com/otaviomorais/AliothX/releases/latest)
 
-| Arquivo | Descrição | Formato de Instalação |
+| Arquivo | Compatibilidade | Como Instalar |
 | :--- | :--- | :--- |
-| **`AliothX-DroidSpaces-alioth-*.zip`** | **Instalador AnyKernel3 (Recomendado)** | Flashear via **TWRP / OrangeFox Recovery** |
-| `boot.img` | Imagem do Kernel | `fastboot flash boot boot.img` ou via **APatch / Magisk** |
-| `dtbo.img` | Device Tree Overlay | `fastboot flash dtbo dtbo.img` |
-| `vendor_boot.img` | Imagem de Boot do Vendor | `fastboot flash vendor_boot vendor_boot.img` |
+| **`AliothX-DroidSpaces-alioth-*.zip`** | **100% Universal** (Header v2 e v3) | Flashear via **TWRP / OrangeFox Recovery** ou **Kernel Flasher** |
 
 ---
 
 ## 📲 Como Instalar
 
-### Método 1: Via Recovery Customizado (TWRP / OrangeFox) — *Recomendado*
+### Método Recomendado: Via Recovery (TWRP / OrangeFox) ou Kernel Flasher
 1. Baixe o pacote `.zip` da release mais recente.
-2. Reinicie o smartphone no modo Recovery (**Volume Mais** + **Botão Power**).
-3. Selecione o arquivo `.zip` e arraste para confirmar o flash.
-4. Reinicie o sistema (*Reboot System*).
-
-### Método 2: Via Fastboot (Computador)
-```bash
-# Reinicie o aparelho em modo bootloader
-adb reboot bootloader
-
-# Flasheie as partições do kernel
-fastboot flash boot boot.img
-fastboot flash dtbo dtbo.img
-fastboot flash vendor_boot vendor_boot.img
-
-# Reinicie o aparelho
-fastboot reboot
-```
+2. Reinicie o smartphone no modo Recovery (**Volume Mais** + **Botão Power**) ou abra o app **Kernel Flasher** com root.
+3. Selecione o arquivo `.zip` e confirme o flash. O instalador inteligente AnyKernel3 identificará automaticamente o formato de boot da sua ROM e atualizará o kernel de forma limpa e segura.
+4. Reinicie o sistema (*Reboot System*). Não é necessário limpar dados nem cache!
 
 ---
 
