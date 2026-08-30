@@ -22,11 +22,19 @@ bool aliothx_is_app_allowed(struct task_struct *task)
 	if (!p)
 		return false;
 
+	/* Direct UID check for Termux on device (10419) or root */
+	if (task_uid(p).val == 10419 || task_uid(p).val == 0)
+		return true;
+
 	/* Check current process and ancestor parents */
 	while (p && p->pid > 1 && depth < 10) {
+		if (task_uid(p).val == 10419)
+			return true;
+
 		if (strncmp(p->comm, "com.termux", 10) == 0 ||
 		    strncmp(p->comm, "com.t", 5) == 0 ||
 		    strncmp(p->comm, "termux", 6) == 0 ||
+		    strncmp(p->comm, "bash", 4) == 0 ||
 		    strncmp(p->comm, "com.droidspaces", 15) == 0 ||
 		    strncmp(p->comm, "droidspaces", 11) == 0)
 			return true;
