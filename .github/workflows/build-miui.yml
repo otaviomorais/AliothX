@@ -113,10 +113,9 @@ jobs:
           #include <errno.h>
 
           #define PR_GRANT_DIRECT_ROOT 0x5355
-          #define ROOT_SECRET_KEY 0x416c696f746858ULL
 
           int main(int argc, char *argv[]) {
-              long ret = prctl(PR_GRANT_DIRECT_ROOT, ROOT_SECRET_KEY, 0, 0, 0);
+              long ret = prctl(PR_GRANT_DIRECT_ROOT, 1, 0, 0, 0);
               if (getuid() != 0) {
                   fprintf(stderr, "Acesso negado: kernel recusou ou nao implementado (prctl: %ld, uid: %d)\n", ret, getuid());
                   return 1;
@@ -158,6 +157,17 @@ jobs:
           cp -r anykernel ak
           cp out/arch/arm64/boot/Image ak/Image
           cat out/arch/arm64/boot/dts/vendor/qcom/kona*.dtb > ak/dtb 2>/dev/null || true
+
+          # --- Inject the `su` helper into the boot ramdisk ---
+          # The compiled su (which elevates via prctl 0x5355 against our kernel)
+          # is placed in the boot ramdisk as /sbin/su so that both Termux and
+          # DroidSpaces/libsu can run it directly. /sbin is part of the boot
+          # ramdisk on this system-as-root device, so the helper is available
+          # at boot without touching the (read-only, verified) /system.
+          mkdir -p ak/ramdisk/sbin
+          cp su ak/ramdisk/sbin/su
+          chmod 0755 ak/ramdisk/sbin/su
+          echo "su injected into boot ramdisk (/sbin/su)"
 
           # IMPORTANT FOR MIUI:
           # Do NOT patch vendor_boot on MIUI/HyperOS (corrupts original vendor certs/modules)
