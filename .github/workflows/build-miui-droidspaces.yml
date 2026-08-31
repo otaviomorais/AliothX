@@ -18,6 +18,10 @@ jobs:
         with:
           ref: miui-hyperos
           fetch-depth: 0
+          # KernelSU-Next é submodule (drivers/kernelsu é symlink para
+          # ../KernelSU-Next/kernel). Inicializar para o defconfig achar
+          # drivers/kernelsu/Kconfig.
+          submodules: recursive
 
       - name: Install Build Dependencies
         run: |
