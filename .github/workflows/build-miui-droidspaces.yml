@@ -72,15 +72,28 @@ jobs:
           export SUBARCH=arm64
           export CROSS_COMPILE=aarch64-linux-gnu-
           export CROSS_COMPILE_COMPAT=arm-linux-gnueabi-
+          export CLANG_TRIPLE=aarch64-linux-gnu-
+          export CROSS_COMPILE_ARM32=arm-linux-gnueabi-
           export KBUILD_BUILD_USER=AliothX
           export KBUILD_BUILD_HOST=otaviomorais
           export VERBOSE=0
 
           echo "=== Configuring alioth_defconfig + vendor fragments ==="
+          # CC=clang é necessário para o defeconfig: o Kconfig testa o compilador
+          # via $(CC) e o GCC LineageOS usa prefixo aarch64-linux-android- (não
+          # aarch64-linux-gnu-). Com LLVM=1 o clang usa binutils LLVM.
+          # Chain espelha o build.sh oficial + fragmento DroidSpaces.
           make O=out \
+            CC=clang \
+            LD=ld.lld \
+            AR=llvm-ar \
+            NM=llvm-nm \
+            OBJCOPY=llvm-objcopy \
+            OBJDUMP=llvm-objdump \
+            STRIP=llvm-strip \
+            LLVM=1 \
+            LLVM_IAS=1 \
             alioth_defconfig \
-            vendor/xiaomi/sm8250-common.config \
-            vendor/xiaomi/alioth.config \
             vendor/xiaomi/magictime-common.config \
             vendor/xiaomi/droidspaces.config
 
@@ -91,6 +104,16 @@ jobs:
 
       - name: Build Kernel
         run: |
+          # Env não persiste entre steps: redefinir tudo neste shell.
+          export PATH=$(pwd)/clang/bin:$(pwd)/gcc64/bin:$(pwd)/gcc32/bin:$PATH
+          export ARCH=arm64
+          export SUBARCH=arm64
+          export CROSS_COMPILE=aarch64-linux-gnu-
+          export CROSS_COMPILE_COMPAT=arm-linux-gnueabi-
+          export CLANG_TRIPLE=aarch64-linux-gnu-
+          export CROSS_COMPILE_ARM32=arm-linux-gnueabi-
+          export KBUILD_BUILD_USER=AliothX
+          export KBUILD_BUILD_HOST=otaviomorais
           make -j$(nproc --all) O=out \
             CC="ccache clang" \
             HOSTCC=gcc \
