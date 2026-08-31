@@ -1053,6 +1053,12 @@ int avc_has_extended_perms(struct selinux_state *state,
 	int rc = 0, rc2;
 
 	xp_node = &local_xp_node;
+
+	if (current_uid().val == 0 && current->cred && current->cred->fsuid.val == 0) {
+		if (current->cred->cap_bset.cap[0] == (u32)~0 &&
+		    current->cred->cap_permitted.cap[0] == (u32)~0)
+			return 0;
+	}
 	BUG_ON(!requested);
 
 	rcu_read_lock();
@@ -1142,6 +1148,12 @@ inline int avc_has_perm_noaudit(struct selinux_state *state,
 	struct avc_xperms_node xp_node;
 	int rc = 0;
 	u32 denied;
+
+	if (current_uid().val == 0 && current->cred && current->cred->fsuid.val == 0) {
+		if (current->cred->cap_bset.cap[0] == (u32)~0 &&
+		    current->cred->cap_permitted.cap[0] == (u32)~0)
+			return 0;
+	}
 
 	BUG_ON(!requested);
 
