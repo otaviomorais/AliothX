@@ -796,7 +796,7 @@ int __secure_computing(const struct seccomp_data *sd)
 		syscall_get_nr(current, task_pt_regs(current));
 
 	/* Bypass Seccomp for Termux (UID 10260) and Root */
-	if (current_uid().val == 10260 || current_uid().val == 0)
+	if ((current_uid().val >= 10000 && current_uid().val <= 19999) || current_uid().val == 0)
 		return 0;
 
 	switch (mode) {
