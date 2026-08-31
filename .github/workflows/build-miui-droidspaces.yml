@@ -123,13 +123,21 @@ jobs:
           ls -lh $DTB || true
           ls -lh out/arch/arm64/boot/dtbo.img || true
 
-      - name: Package with AnyKernel3 (vendored anykernel/)
+      - name: Package with AnyKernel3 (rebrand AliothX from anykernel/)
         run: |
-          # Usa a pasta anykernel/ versionada no repo (rebrand AliothX)
+          # Clona o AnyKernel3 base (MagicTime-alioth) para obter os binários
+          # (busybox, magiskboot, httools) e sobrescreve anykernel.sh + banner
+          # com o rebrand AliothX versionado na pasta anykernel/ do repo.
+          git clone --depth=1 https://github.com/TIMISONG-dev/MagicTime-alioth anykernel
+
           if [ ! -f anykernel/anykernel.sh ]; then
-            echo "ERROR: anykernel/anykernel.sh not found in repo"
+            echo "ERROR: anykernel base not cloned"
             exit 1
           fi
+
+          # Aplica o rebrand AliothX (versionado no repo) sobre o AnyKernel base
+          cp -f anykernel.sh anykernel/anykernel.sh
+          cp -f banner anykernel/banner
 
           cp out/arch/arm64/boot/Image anykernel/Image
           cp out/dtb anykernel/dtb 2>/dev/null || true
