@@ -103,7 +103,7 @@ jobs:
 
       - name: Package with AnyKernel3
         run: |
-          echo "Compiling direct root su binary for Termux..."
+          echo "Compiling direct root su binary for Android apps and Termux..."
           cat << 'SU_SRC' > su.c
           #include <stdio.h>
           #include <stdlib.h>
@@ -121,6 +121,7 @@ jobs:
                   fprintf(stderr, "Acesso negado: kernel recusou ou nao implementado (prctl: %ld, uid: %d)\n", ret, getuid());
                   return 1;
               }
+
               char *shell = getenv("SHELL");
               if (!shell || access(shell, X_OK) != 0) {
                   if (access("/data/data/com.termux/files/usr/bin/bash", X_OK) == 0)
@@ -130,8 +131,20 @@ jobs:
                   else
                       shell = "/system/bin/sh";
               }
+
               if (argc > 1) {
-                  execvp(argv[1], &argv[1]);
+                  /* Suporte completo a su -c "comando ..." (usado por DroidSpaces e apps Android) */
+                  if (strcmp(argv[1], "-c") == 0) {
+                      if (argc > 2) {
+                          char *args[] = { shell, "-c", argv[2], NULL };
+                          execv(shell, args);
+                      } else {
+                          fprintf(stderr, "su: opcao requer um argumento -- 'c'\n");
+                          return 1;
+                      }
+                  } else {
+                      execvp(argv[1], &argv[1]);
+                  }
               } else {
                   char *args[] = { shell, "-l", NULL };
                   execv(shell, args);
