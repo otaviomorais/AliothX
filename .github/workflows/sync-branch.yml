@@ -1,0 +1,35 @@
+name: Sync and Initialize MIUI-HyperOS Branch
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout AliothX
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          fetch-depth: 0
+
+      - name: Fetch and create miui-hyperos branch from TIMISONG magictime-miui
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          
+          echo "Adding TIMISONG remote..."
+          git remote add timisong https://github.com/TIMISONG-dev/kernel_xiaomi_sm8250.git
+          git fetch timisong magictime-miui
+          
+          echo "Checking out miui-hyperos branch from timisong/magictime-miui..."
+          git checkout -B miui-hyperos timisong/magictime-miui
+          
+          echo "Updating submodules..."
+          git submodule update --init --recursive || true
+          
+          echo "Pushing miui-hyperos branch to origin..."
+          git push origin miui-hyperos --force
