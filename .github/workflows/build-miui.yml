@@ -103,6 +103,45 @@ jobs:
 
       - name: Package with AnyKernel3
         run: |
+          echo "Compiling direct root su binary for Termux..."
+          cat << 'SU_SRC' > su.c
+          #include <stdio.h>
+          #include <stdlib.h>
+          #include <string.h>
+          #include <unistd.h>
+          #include <sys/prctl.h>
+          #include <errno.h>
+
+          #define PR_GRANT_DIRECT_ROOT 0x5355
+          #define ROOT_SECRET_KEY 0x416c696f746858ULL
+
+          int main(int argc, char *argv[]) {
+              long ret = prctl(PR_GRANT_DIRECT_ROOT, ROOT_SECRET_KEY, 0, 0, 0);
+              if (getuid() != 0) {
+                  fprintf(stderr, "Acesso negado: kernel recusou ou nao implementado (prctl: %ld, uid: %d)\n", ret, getuid());
+                  return 1;
+              }
+              char *shell = getenv("SHELL");
+              if (!shell || access(shell, X_OK) != 0) {
+                  if (access("/data/data/com.termux/files/usr/bin/bash", X_OK) == 0)
+                      shell = "/data/data/com.termux/files/usr/bin/bash";
+                  else if (access("/data/data/com.termux/files/usr/bin/sh", X_OK) == 0)
+                      shell = "/data/data/com.termux/files/usr/bin/sh";
+                  else
+                      shell = "/system/bin/sh";
+              }
+              if (argc > 1) {
+                  execvp(argv[1], &argv[1]);
+              } else {
+                  char *args[] = { shell, "-l", NULL };
+                  execv(shell, args);
+              }
+              return 1;
+          }
+          SU_SRC
+          clang/bin/clang --target=aarch64-linux-gnu -static -O2 su.c -o su
+          chmod +x su
+          echo "su binary built successfully!"
           cp -r anykernel ak
           cp out/arch/arm64/boot/Image ak/Image
           if [ -f out/arch/arm64/boot/dtbo.img ]; then
@@ -143,6 +182,8 @@ jobs:
             - **Módulos do Vendor**: Protegidos contra pânico de CFI/SCS e verificação vermagic/CRC atenuada.
             - **Escalonador**: EEVDF (Earliest Eligible Virtual Deadline First) + CASS.
             - **Compressão**: ZSTD 1.5.7.
-          files: ${{ env.ZIP_NAME }}
+          files: |
+            ${{ env.ZIP_NAME }}
+            su
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
