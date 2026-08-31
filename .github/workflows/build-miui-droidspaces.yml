@@ -1,0 +1,173 @@
+name: Build AliothX Kernel (MIUI/HyperOS + DroidSpaces)
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - miui-hyperos
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout Kernel Source (miui-hyperos)
+        uses: actions/checkout@v4
+        with:
+          ref: miui-hyperos
+          fetch-depth: 0
+
+      - name: Install Build Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            bc bison build-essential ccache curl flex git \
+            gnupg gperf libelf-dev libncurses-dev libssl-dev libxml2 libxml2-utils \
+            lzop pngcrush rsync schedtool squashfs-tools xsltproc zip zlib1g-dev \
+            python3 python3-pip cpio device-tree-compiler p7zip-full
+          which python2 || sudo ln -sf $(which python3) /usr/bin/python2
+
+      - name: Download Clang Toolchain (ZyCromerZ Clang 20, fallback AOSP)
+        run: |
+          # Mesmo Clang 20 que o build.sh do AliothX/TIMISONG usa localmente.
+          echo "Tentando baixar ZyCromerZ Clang 20.0.0git-20250129..."
+          mkdir -p clang
+          ok=0
+          if curl -L -o clang.tar.gz \
+            "https://github.com/ZyCromerZ/Clang/releases/download/20.0.0git-20250129-release/Clang-20.0.0git-20250129.tar.gz" \
+            --connect-timeout 30 --max-time 900 \
+            && tar -xzf clang.tar.gz -C clang --strip-components=1; then
+            if [ -x clang/bin/clang ]; then
+              clang/bin/clang --version | head -3 && ok=1
+            fi
+          fi
+          if [ "$ok" != "1" ]; then
+            echo "ZyCromerZ falhou. Baixando AOSP Clang r563880c (fallback)..."
+            rm -rf clang clang.tar.gz
+            mkdir -p clang
+            git clone --depth=1 \
+              https://gitlab.com/crdroidandroid/android_prebuilts_clang_host_linux-x86_clang-r563880c.git clang
+            chmod -R +x clang/bin/
+            clang/bin/clang --version | head -3
+          fi
+
+      - name: Clone GCC Cross Compilers (LineageOS 4.9)
+        run: |
+          git clone --depth=1 \
+            https://github.com/LineageOS/android_prebuilts_gcc_linux-x86_aarch64_aarch64-linux-android-4.9.git gcc64
+          git clone --depth=1 \
+            https://github.com/LineageOS/android_prebuilts_gcc_linux-x86_arm_arm-linux-androideabi-4.9.git gcc32
+
+      - name: Verify DroidSpaces fragment exists
+        run: |
+          test -f arch/arm64/configs/vendor/xiaomi/droidspaces.config && echo "droidspaces.config OK" || { echo "MISSING droidspaces.config"; exit 1; }
+
+      - name: Configure Kernel (alioth_defconfig + fragments)
+        run: |
+          mkdir -p out
+          export PATH=$(pwd)/clang/bin:$(pwd)/gcc64/bin:$(pwd)/gcc32/bin:$PATH
+          export ARCH=arm64
+          export SUBARCH=arm64
+          export CROSS_COMPILE=aarch64-linux-gnu-
+          export CROSS_COMPILE_COMPAT=arm-linux-gnueabi-
+          export KBUILD_BUILD_USER=AliothX
+          export KBUILD_BUILD_HOST=otaviomorais
+          export VERBOSE=0
+
+          echo "=== Configuring alioth_defconfig + vendor fragments ==="
+          make O=out \
+            alioth_defconfig \
+            vendor/xiaomi/sm8250-common.config \
+            vendor/xiaomi/alioth.config \
+            vendor/xiaomi/magictime-common.config \
+            vendor/xiaomi/droidspaces.config
+
+          echo "=== Verifying DroidSpaces options ==="
+          grep -E \
+            "CONFIG_USER_NS|CONFIG_PID_NS|CONFIG_UTS_NS|CONFIG_IPC_NS|CONFIG_FAIR_GROUP_SCHED|CONFIG_SECCOMP_FILTER|CONFIG_DEVTMPFS|CONFIG_NET_NS|CONFIG_NFTABLES" \
+            out/.config || true
+
+      - name: Build Kernel
+        run: |
+          make -j$(nproc --all) O=out \
+            CC="ccache clang" \
+            HOSTCC=gcc \
+            LD=ld.lld \
+            AS=llvm-as \
+            AR=llvm-ar \
+            NM=llvm-nm \
+            OBJCOPY=llvm-objcopy \
+            OBJDUMP=llvm-objdump \
+            STRIP=llvm-strip \
+            LLVM=1 \
+            LLVM_IAS=1 \
+            V=0 2>&1 | tee build.log
+
+      - name: Assemble Kernel Image
+        run: |
+          DTS=out/arch/arm64/boot/dts/vendor/qcom
+          IMG=out/arch/arm64/boot/Image
+          DTB=out/dtb
+
+          if [ ! -f $IMG ]; then
+            echo "ERROR: Kernel Image not found!"
+            tail -100 build.log
+            exit 1
+          fi
+
+          find $DTS -name '*.dtb' -exec cat {} + > $DTB 2>/dev/null || true
+
+          ls -lh $IMG
+          ls -lh $DTB || true
+          ls -lh out/arch/arm64/boot/dtbo.img || true
+
+      - name: Package with AnyKernel3 (vendored anykernel/)
+        run: |
+          # Usa a pasta anykernel/ versionada no repo (rebrand AliothX)
+          if [ ! -f anykernel/anykernel.sh ]; then
+            echo "ERROR: anykernel/anykernel.sh not found in repo"
+            exit 1
+          fi
+
+          cp out/arch/arm64/boot/Image anykernel/Image
+          cp out/dtb anykernel/dtb 2>/dev/null || true
+          if [ -f out/arch/arm64/boot/dtbo.img ]; then
+            cp out/arch/arm64/boot/dtbo.img anykernel/dtbo.img
+          fi
+
+          # IMPORTANT FOR MIUI: remove the vendor_boot patching block to
+          # avoid corrupting stock MIUI/HyperOS vendor certs/modules.
+          sed -i '/vendor_boot shell variables/,$d' anykernel/anykernel.sh
+
+          DATE_TAG=$(date +'%Y%m%d-%H%M')
+          ZIP_NAME="AliothX-DroidSpaces-MIUI-alioth-${DATE_TAG}.zip"
+          (cd anykernel && zip -r9 "../${ZIP_NAME}" . -x '*.git*')
+          echo "ZIP_NAME=${ZIP_NAME}" >> $GITHUB_ENV
+          echo "DATE_TAG=${DATE_TAG}" >> $GITHUB_ENV
+          ls -lh "${ZIP_NAME}"
+
+      - name: Upload Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: AliothX-DroidSpaces-MIUI-${{ env.DATE_TAG }}
+          path: ${{ env.ZIP_NAME }}
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        if: github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/heads/miui-hyperos')
+        with:
+          tag_name: droidspaces-v${{ env.DATE_TAG }}
+          name: AliothX DroidSpaces — MIUI/HyperOS (${{ env.DATE_TAG }})
+          body: |
+            ### AliothX Kernel — MIUI 14 / HyperOS Edition + DroidSpaces
+            - **SoC**: Qualcomm Snapdragon 870 5G (SM8250-AC)
+            - **DroidSpaces**: containerização de apps (USER_NS, PID_NS, NET_NS, seccomp, nftables/NAT)
+            - **KernelSU**: integrado (`CONFIG_KSU=y`)
+            - **GPU**: fix do `BUG_ON` adreno — reset sem panic/reboot
+            - **Escalonador**: EEVDF + CASS + Uclamp
+            - **AnyKernel3 seguro para MIUI**: boot sem corromper `vendor_boot` original
+          files: ${{ env.ZIP_NAME }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
