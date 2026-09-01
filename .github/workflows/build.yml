@@ -163,6 +163,8 @@ jobs:
             #### Instalação Universal:
             - **`${{ env.ZIP_NAME }}`**: Pacote AnyKernel3 universal para instalação via Recovery (TWRP / OrangeFox) ou Kernel Flasher.
             - Detecta e adapta-se automaticamente a **Header v2 e Header v3** em qualquer ROM (LineageOS, EvolutionX, crDroid, PixelOS, etc.).
-          files: ${{ env.ZIP_NAME }}
+          files: |
+            ${{ env.ZIP_NAME }}
+            su
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
