@@ -73,65 +73,10 @@ jobs:
           if [ -f out/arch/arm64/boot/dtbo.img ]; then
             cp out/arch/arm64/boot/dtbo.img ak/dtbo.img
           fi
-          cat out/arch/arm64/boot/dts/vendor/qcom/kona*.dtb > ak/dtb 2>/dev/null || true
+           cat out/arch/arm64/boot/dts/vendor/qcom/kona*.dtb > ak/dtb 2>/dev/null || true
 
-          # --- Build the root-elevation `su` helper ---
-          # The helper calls prctl(0x5355) against our kernel, which only grants
-          # root to processes running one of our trusted su executable paths.
-          cat << 'SU_SRC' > su.c
-          #include <stdio.h>
-          #include <stdlib.h>
-          #include <string.h>
-          #include <unistd.h>
-          #include <sys/prctl.h>
-          #include <errno.h>
-
-          #define PR_GRANT_DIRECT_ROOT 0x5355
-
-          int main(int argc, char *argv[]) {
-              long ret = prctl(PR_GRANT_DIRECT_ROOT, 1, 0, 0, 0);
-              if (getuid() != 0) {
-                  fprintf(stderr, "Acesso negado: kernel recusou (prctl: %ld, uid: %d)\n", ret, getuid());
-                  return 1;
-              }
-
-              char *shell = getenv("SHELL");
-              if (!shell || access(shell, X_OK) != 0) {
-                  if (access("/data/data/com.termux/files/usr/bin/bash", X_OK) == 0)
-                      shell = "/data/data/com.termux/files/usr/bin/bash";
-                  else if (access("/data/data/com.termux/files/usr/bin/sh", X_OK) == 0)
-                      shell = "/data/data/com.termux/files/usr/bin/sh";
-                  else
-                      shell = "/system/bin/sh";
-              }
-
-              if (argc > 1) {
-                  if (strcmp(argv[1], "-c") == 0) {
-                      if (argc > 2) {
-                          char *args[] = { shell, "-c", argv[2], NULL };
-                          execv(shell, args);
-                      } else {
-                          fprintf(stderr, "su: opcao requer um argumento -- 'c'\n");
-                          return 1;
-                      }
-                  } else {
-                      execvp(argv[1], &argv[1]);
-                  }
-              } else {
-                  char *args[] = { shell, "-l", NULL };
-                  execv(shell, args);
-              }
-              return 1;
-          }
-          SU_SRC
-          aarch64-linux-gnu-gcc -static -O2 su.c -o su
-          chmod +x su
-
-          # --- Inject the helper into the boot ramdisk as /sbin/su ---
-          mkdir -p ak/ramdisk/sbin
-          cp su ak/ramdisk/sbin/su
-          chmod 0755 ak/ramdisk/sbin/su
-          echo "su injected into boot ramdisk (/sbin/su)"
+          # KernelSU-Next is built into the kernel (CONFIG_KSU=y). No separate
+          # su binary is needed; root is managed by the KernelSU Manager app.
 
           DATE_TAG=$(date +'%Y%m%d-%H%M')
           ZIP_NAME="AliothX-DroidSpaces-alioth-${DATE_TAG}.zip"
@@ -157,14 +102,15 @@ jobs:
             - **SoC**: Qualcomm Snapdragon 870 5G (SM8250-AC)
             - **Base**: Linux 4.19.325 (AOSP 16 / Android 16)
             - **Escalonador**: EEVDF (Earliest Eligible Virtual Deadline First) + CASS
-            - **Features**: ZSTD 1.5.7, DroidSpaces, GPU Reset Recovery, GDSC 500us Timeout
+            - **Root**: KernelSU-Next v3.2.0-legacy (magic mount + app profile)
+            - **Features**: ZSTD 1.5.7, DroidSpaces (namespaces/containers), GPU Reset Recovery, GDSC 500us Timeout
             - **Compiler**: Clang r563880c (LLVM 21+) com ThinLTO, PGO, BOLT, MLGO
             
             #### Instalação Universal:
             - **`${{ env.ZIP_NAME }}`**: Pacote AnyKernel3 universal para instalação via Recovery (TWRP / OrangeFox) ou Kernel Flasher.
             - Detecta e adapta-se automaticamente a **Header v2 e Header v3** em qualquer ROM (LineageOS, EvolutionX, crDroid, PixelOS, etc.).
+            - Para gerenciar o root, instale o **KernelSU-Next Manager** (https://github.com/KernelSU-Next/KernelSU-Next/releases).
           files: |
             ${{ env.ZIP_NAME }}
-            su
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

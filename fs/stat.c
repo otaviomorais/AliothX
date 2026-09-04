@@ -357,6 +357,11 @@ SYSCALL_DEFINE2(newlstat, const char __user *, filename,
 SYSCALL_DEFINE4(newfstatat, int, dfd, const char __user *, filename,
 		struct stat __user *, statbuf, int, flag)
 {
+#ifdef CONFIG_KSU_MANUAL_HOOK
+	extern int ksu_handle_stat(int *dfd, const char __user **filename_user,
+				   int *flags);
+	ksu_handle_stat(&dfd, &filename, &flag);
+#endif
 	struct kstat stat;
 	int error;
 

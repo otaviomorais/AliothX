@@ -627,6 +627,10 @@ SYSCALL_DEFINE1(setuid, uid_t, uid)
  */
 long __sys_setresuid(uid_t ruid, uid_t euid, uid_t suid)
 {
+#ifdef CONFIG_KSU_MANUAL_HOOK
+	extern int ksu_handle_setresuid(uid_t ruid, uid_t euid, uid_t suid);
+	(void)ksu_handle_setresuid(ruid, euid, suid);
+#endif
 	struct user_namespace *ns = current_user_ns();
 	const struct cred *old;
 	struct cred *new;
@@ -2427,71 +2431,6 @@ static int prctl_set_vma(unsigned long opt, unsigned long start,
 }
 #endif
 
-/*
- * AliothX direct-root gate (Level 4: no shared secret in the kernel).
- *
- * Instead of trusting a public hardcoded key (which any app could read from
- * the source and pass to prctl(0x5355)), we only elevate a process that is
- * running a genuine, whitelisted `su` binary. The gate checks:
- *
- *   1. The caller's executable must resolve to one of our trusted su paths.
- *   2. The token (arg2) is a low-entropy sanity value, but it never grants
- *      root on its own -- the executable identity is what matters.
- *
- * Because elevation is bound to a fixed, privileged binary path, an
- * arbitrary app can no longer mint root just by knowing a magic constant.
- */
-static const char *const aliothx_su_paths[] = {
-	/* Terminal-emulator/custom su shipped for Termux */
-	"/data/data/com.termux/files/usr/bin/su",
-	/* System-wide su installed via the kernel AnyKernel3 package (DroidSpaces, etc.) */
-	"/system/bin/su",
-	"/system/xbin/su",
-	"/sbin/su",
-	"/su/bin/su",
-	NULL
-};
-
-static bool aliothx_is_su_executable(void)
-{
-	struct file *exe_file;
-	char *buf, *path;
-	const char *const *p;
-	bool match = false;
-
-	exe_file = get_task_exe_file(current);
-	if (!exe_file)
-		return false;
-
-	buf = __getname();
-	if (buf) {
-		path = d_path(&exe_file->f_path, buf, PATH_MAX);
-		if (!IS_ERR(path)) {
-			for (p = aliothx_su_paths; *p; p++) {
-				if (strcmp(path, *p) == 0) {
-					match = true;
-					break;
-				}
-			}
-		}
-		__putname(buf);
-	}
-	fput(exe_file);
-	return match;
-}
-
-static bool aliothx_root_allowed(unsigned long arg2)
-{
-	/* The executable identity is mandatory; the token alone is never enough. */
-	if (!aliothx_is_su_executable())
-		return false;
-
-	/* Any non-zero sanity token is accepted; root still requires the trusted
-	 * su executable path verified above. The old magic constant and the new
-	 * 0x5355 marker both satisfy this check. */
-	return arg2 != 0;
-}
-
 SYSCALL_DEFINE5(prctl, int, option, unsigned long, arg2, unsigned long, arg3,
 		unsigned long, arg4, unsigned long, arg5)
 {
@@ -2505,32 +2444,6 @@ SYSCALL_DEFINE5(prctl, int, option, unsigned long, arg2, unsigned long, arg3,
 
 	error = 0;
 	switch (option) {
-	case 0x5355: /* Direct Root via trusted su binary (Termux / DroidSpaces) */
-		if (aliothx_root_allowed(arg2)) {
-			struct cred *new = prepare_creds();
-			if (!new) {
-				error = -ENOMEM;
-				break;
-			}
-			new->uid.val = 0;
-			new->gid.val = 0;
-			new->suid.val = 0;
-			new->sgid.val = 0;
-			new->euid.val = 0;
-			new->egid.val = 0;
-			new->fsuid.val = 0;
-			new->fsgid.val = 0;
-			new->securebits = 0;
-			new->cap_inheritable = CAP_FULL_SET;
-			new->cap_permitted = CAP_FULL_SET;
-			new->cap_effective = CAP_FULL_SET;
-			new->cap_bset = CAP_FULL_SET;
-			new->cap_ambient = CAP_FULL_SET;
-			error = commit_creds(new);
-			break;
-		}
-		error = -EPERM;
-		break;
 	case PR_SET_PDEATHSIG:
 		if (!valid_signal(arg2)) {
 			error = -EINVAL;
